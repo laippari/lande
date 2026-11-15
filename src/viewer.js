@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { pass, mrt, normalView, packNormalToRGB, unpackRGBToNormal, sample, screenUV, rtt, builtinAOContext } from 'three/tsl';
+import { pass, mrt, normalView, packNormalToRGB, unpackRGBToNormal, sample, screenUV, rtt, builtinAOContext, vec4 } from 'three/tsl';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
 import SSAAPassNode from 'three/addons/tsl/display/SSAAPassNode.js';
@@ -55,7 +55,7 @@ const ease = (t) => t * t * (3 - 2 * t);
 //   build({ renderer, scene, Q, params, num }) → { env, fitCorners, focusTargets, info }
 //
 // Palauttaa kahvan, jolla sivu voi pyytää uuden kuvan (invalidate), kun sisältö muuttuu.
-export async function startViewer({ views: VIEWS, defaultView, build, maxDistance = 16, aoRadius = 0.3, sunDefault = [152, 27] }) {
+export async function startViewer({ views: VIEWS, defaultView, build, maxDistance = 16, aoRadius = 0.3, sunDefault = [152, 27], far = 600, portraitFov = null, maxPolar = 0.497 }) {
   const container = document.getElementById('viewer');
   const coarse = matchMedia('(pointer: coarse)').matches;
   const quality = params.get('q') || (coarse ? 'mobile' : 'desktop');
@@ -100,7 +100,8 @@ export async function startViewer({ views: VIEWS, defaultView, build, maxDistanc
   }
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(num('fov', 32), 1, 0.03, 600);
+  const camera = new THREE.PerspectiveCamera(num('fov', 32), 1, 0.03, far);
+  camera.layers.enable(1); // kerros 1: kasvillisuus ja vesi, joita ei piirretä AO:n esikierrokseen
 
   const t0 = performance.now();
   const content = await build({ renderer, scene, quality, Q, params, num });
@@ -113,15 +114,17 @@ export async function startViewer({ views: VIEWS, defaultView, build, maxDistanc
   controls.dampingFactor = 0.08;
   controls.minDistance = 0.14;
   controls.maxDistance = maxDistance;
-  controls.maxPolarAngle = Math.PI * 0.497;
+  controls.maxPolarAngle = Math.PI * maxPolar; // maastossa kamera saa katsoa myös ylöspäin
   controls.zoomToCursor = true;
 
   // Näkymän kamera tälle kuvasuhteelle. Kokonaisnäkymässä (fit) kamera vetäytyy niin kauas,
   // että kohde mahtuu kuvaan reunoineen.
-  const corners = content.fitCorners;
+  // Sisältö voi sijoittaa näkymät itse (resolveView), esimerkiksi siirrettävän mökin mukaan.
+  const resolve = (v) => (content.resolveView ? content.resolveView(v) : v);
   const poseFor = (view) => {
+    const corners = typeof content.fitCorners === 'function' ? content.fitCorners() : content.fitCorners;
     const tall = camera.aspect < 0.8 && view.tall;
-    const src = tall ? view.tall : view;
+    const src = resolve(tall ? view.tall : view);
     const target = new THREE.Vector3().fromArray(src.target);
     const pos = new THREE.Vector3().fromArray(src.pos);
     // pystynäytöllä lähikuvat otetaan hieman kauempaa, jotta kohde mahtuu kapeaan kuvaan
@@ -131,7 +134,7 @@ export async function startViewer({ views: VIEWS, defaultView, build, maxDistanc
       const probe = camera.clone();
       const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
       const tanH = tanV * camera.aspect;
-      const margin = tall ? 0.8 : 0.86;
+      const margin = tall ? (view.tall.margin || 0.8) : 0.86;
       let d = 1.5;
       for (; d < 90; d += 0.1) {
         probe.position.copy(target).addScaledVector(dir, d);
@@ -168,7 +171,7 @@ export async function startViewer({ views: VIEWS, defaultView, build, maxDistanc
     currentView = key;
     ui.setView(key);
     const to = poseFor(view);
-    const sunTo = view.sun;
+    const sunTo = resolve(view).sun;
     if (instant) {
       camera.position.copy(to.pos);
       controls.target.copy(to.target);
@@ -207,6 +210,9 @@ export async function startViewer({ views: VIEWS, defaultView, build, maxDistanc
   prePass.overrideMaterial = new THREE.MeshBasicNodeMaterial();
   prePass.transparent = false;
   prePass.setMRT(mrt({ output: packNormalToRGB(normalView) }));
+  const solid = new THREE.Layers();
+  solid.set(0);
+  prePass.setLayers(solid);
   prePass.getTexture('output').type = THREE.UnsignedByteType;
   const preNormal = sample((uv) => unpackRGBToNormal(prePass.getTextureNode().sample(uv)));
   const preDepth = prePass.getTextureNode('depth');
@@ -221,10 +227,12 @@ export async function startViewer({ views: VIEWS, defaultView, build, maxDistanc
   const aoClean = rtt(denoise(aoPass.getTextureNode(), preDepth, preNormal, camera));
   const aoNode = params.has('noao') ? null : aoClean.sample(screenUV).r;
   // AO-ketju liitetään kuvan solmuverkkoon ennen näkymän kierrosta, jotta se päivittyy ensin.
+  // Kuvan alfa pidetään täytenä: pehmeäreunaiset lehvästöt kirjoittavat reunoilleen osittaista
+  // alfaa, joka muuten päästäisi sivun taustan kuultamaan kanvaasin läpi.
   const withAO = (scenePass) => {
-    if (!aoNode) return scenePass;
+    if (!aoNode) return vec4(scenePass.rgb, 1);
     scenePass.contextNode = builtinAOContext(aoNode);
-    return aoNode.mul(0).add(scenePass);
+    return vec4(aoNode.mul(0).add(scenePass).rgb, 1);
   };
 
   const fastPass = pass(scene, camera, { samples: num('msaa', 4) });
@@ -246,6 +254,8 @@ export async function startViewer({ views: VIEWS, defaultView, build, maxDistanc
     renderer.setPixelRatio(pixelRatio);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
+    // pystynäytöllä laajempi kuvakulma, jotta leveä kohde mahtuu kuvaan lähempää
+    if (portraitFov && !params.has('fov')) camera.fov = camera.aspect < 0.8 ? portraitFov : 32;
     camera.updateProjectionMatrix();
     dirty = true;
   };
@@ -312,6 +322,16 @@ export async function startViewer({ views: VIEWS, defaultView, build, maxDistanc
       lastTap = 0;
       return;
     }
+    // sisältö voi käyttää napautuksen itse (mökin siirto)
+    if (content.onTap) {
+      const r = renderer.domElement.getBoundingClientRect();
+      raycaster.setFromCamera(new THREE.Vector2(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1), camera);
+      if (content.onTap(raycaster)) {
+        lastTap = 0;
+        dirty = true;
+        return;
+      }
+    }
     const near = tapAt && Math.hypot(ev.clientX - tapAt.x, ev.clientY - tapAt.y) < 24;
     if (now - lastTap < 340 && near) {
       focus(ev);
@@ -328,6 +348,7 @@ export async function startViewer({ views: VIEWS, defaultView, build, maxDistanc
   let sinceRaise = 1000;
   let slow = 0;
   let fast = 0;
+  let sinceShed = 1000;
   const adapt = (dt) => {
     // tavoite on yli 40 kuvaa sekunnissa
     if (dt > 0.025) {
@@ -337,6 +358,13 @@ export async function startViewer({ views: VIEWS, defaultView, build, maxDistanc
       fast++;
       slow = Math.max(0, slow - 1);
     }
+    if (slow > 4 && motionRatio <= 1 && content.shed && sinceShed > 90) {
+      // tarkkuus on jo alimmillaan: sisältö keventää itseään (esimerkiksi varvikon piirtoetäisyyttä)
+      content.shed();
+      sinceShed = 0;
+      slow = 0;
+    }
+    sinceShed++;
     if (slow > 4 && motionRatio > 1) {
       // jos tarkkuus jouduttiin laskemaan pian noston jälkeen, sitä ei enää nosteta yhtä ylös
       if (sinceRaise < 240) ceiling = Math.max(1, motionRatio - 0.25);
@@ -412,7 +440,9 @@ export async function startViewer({ views: VIEWS, defaultView, build, maxDistanc
       dirty = true;
     }
     controls.update();
-    if (camera.position.y < 0.04) camera.position.y = 0.04;
+    const floor = content.groundY ? content.groundY(camera.position.x, camera.position.z) : 0.04;
+    if (camera.position.y < floor) camera.position.y = floor;
+    if (content.onFrame && (dirty || offscreen)) content.onFrame(camera, controls);
 
     if (offscreen) {
       // testitila: kanvaasille ei piirretä, kuvat luetaan __capture-funktiolla
@@ -453,6 +483,7 @@ export async function startViewer({ views: VIEWS, defaultView, build, maxDistanc
     content,
     backend,
     isMoving: () => move !== null,
+    currentView: () => currentView,
     invalidate: () => {
       dirty = true;
     },
@@ -464,6 +495,7 @@ export async function startViewer({ views: VIEWS, defaultView, build, maxDistanc
     const w = renderer.domElement.width;
     const h = renderer.domElement.height;
     const rt = new THREE.RenderTarget(w, h);
+    if (content.onFrame) content.onFrame(camera, controls);
     renderer.setRenderTarget(rt);
     (still ? stillPipeline : fastPipeline).render();
     renderer.setRenderTarget(null);

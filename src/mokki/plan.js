@@ -1,104 +1,157 @@
 // Mökin rungon suunnitelma: mitkä hirret, missä, minkä kokoisina ja miten ne liittyvät nurkissa.
 //
-// Koordinaatisto (metreinä): x kulkee pitkien seinien suuntaan, z on syvyys ja y ylös.
-// Etuseinä on +z-puolella; pulpettikatto nousee sitä kohti.
+// Mökin oma koordinaatisto (metreinä): x kulkee pitkien seinien suuntaan, z on syvyys ja y ylös.
+// y = 0 on alimman hirren alapinta eli perustuspalkkien yläpinta. Etuseinä on +z-puolella;
+// pulpettikatto nousee sitä kohti.
 //
-// Seinä on pino hirsikerroksia. Kerrosten väliset saumat eivät ole viivasuoria: hirsi on
-// tyvestä paksumpi kuin latvasta, joten sauma viettää hieman ja tyvet vuorottelevat
-// kerroksittain. Päätyseinien kerrokset ovat puoli kerrosta ylempänä kuin pitkien seinien,
-// ja nurkassa hirret lomittuvat lohenpyrstötapein.
+// Seinä on pino hirsikerroksia. Jokainen hirsi kapenee tyvestä latvaan, joten kerros on toisesta
+// päästä paksumpi kuin toisesta, ja seuraava kerros veistetään sen selkään. Tyvet vuorottelevat,
+// jotta seinä pysyy keskimäärin vaakasuorassa; saumat mutkittelevat sen ympärillä muutaman sentin.
+// Päätyseinien kerrokset ovat puoli kerrosta ylempänä kuin pitkien seinien, ja nurkassa hirret
+// lomittuvat lohenpyrstötapein.
 
 import { mulberry32 } from '../log/hewing.js';
 
 export const DIM = {
-  width: 14, // ulkomitta x-suunnassa
-  depth: 6, // ulkomitta z-suunnassa
+  width: 12, // ulkomitta x-suunnassa
+  depth: 8, // ulkomitta z-suunnassa
   wall: 0.2, // hirren paksuus
   overhang: 0.035, // tapin pää ulkonee ristiin tulevan seinän pinnasta
-  plinth: 0.3, // sokkelin korkeus
-  height: 4.0, // sisäkorkeus matalalla seinällä
-  course: 0.285, // hirsikerran keskikorkeus
+  floor: 0.33, // lattian pinta alimman hirren alapinnasta (rossipohjan palkit ja laudat)
+  height: 3.0, // sisäkorkeus lattiasta matalan seinän yläpäähän
+  course: 0.31, // hirsikerran keskikorkeus
   dovetail: 0.15, // lohenpyrstön tasojen kaltevuus
 };
+
+// Etuseinän ikkunat: neljä metrin levyistä ja 2,5 m korkeaa ikkunaa kahtena parina keskellä
+// seinää, alareuna lattian rajassa.
+export const WINDOWS = { width: 1.0, height: 2.5, mullion: 0.1, gap: 1.2 };
 
 // Katon kaltevuudet ovat samat kuin talo-projektissa: pulpetti 14 %, harja 1:2.
 export const ROOF = { monoSlope: 0.14, gableSlope: 0.5 };
 
 const HW = DIM.wall / 2;
 const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+
+// Paloittain lineaarinen funktio pisteiden (x, y) kautta.
+const polyline = (xs, ys) => (x) => {
+  if (x <= xs[0]) return ys[0];
+  for (let i = 1; i < xs.length; i++) if (x <= xs[i]) return lerp(ys[i - 1], ys[i], (x - xs[i - 1]) / (xs[i] - xs[i - 1]));
+  return ys[ys.length - 1];
+};
+
+export function windowOpenings() {
+  const pair = 2 * WINDOWS.width + WINDOWS.mullion;
+  const y0 = DIM.floor, y1 = DIM.floor + WINDOWS.height;
+  return [
+    { x0: -WINDOWS.gap / 2 - pair, x1: -WINDOWS.gap / 2, y0, y1 },
+    { x0: WINDOWS.gap / 2, x1: WINDOWS.gap / 2 + pair, y0, y1 },
+  ];
+}
 
 export function planCabin({ roofType = 'mono', seed = 7 } = {}) {
   const rnd = mulberry32(seed * 7919 + 13);
   const X0 = -DIM.width / 2, X1 = DIM.width / 2;
   const Z0 = -DIM.depth / 2, Z1 = DIM.depth / 2;
-  const Y0 = DIM.plinth;
   const span = DIM.depth - DIM.wall; // seinälinjojen väli
+  const low = DIM.floor + DIM.height; // matalan seinän yläpää
 
   // Katon alapinnan korkeus kohdassa z. Pulpetti nousee takaseinältä etuseinälle,
   // harjakaton harja kulkee pitkien seinien suuntaan.
   const roofY = roofType === 'mono'
-    ? (z) => Y0 + DIM.height + ROOF.monoSlope * (z - (Z0 + HW))
-    : (z) => Y0 + DIM.height + ROOF.gableSlope * (span / 2 - Math.abs(z));
+    ? (z) => low + ROOF.monoSlope * (z - (Z0 + HW))
+    : (z) => low + ROOF.gableSlope * (span / 2 - Math.abs(z));
   const roofMax = roofType === 'mono' ? roofY(Z1 + HW) : roofY(0);
 
-  // --- kerrosten korkeudet ---
-  // Takaseinän kerrokset täyttävät sisäkorkeuden tasan; pulpettikatossa etuseinä jatkuu
-  // siitä ylöspäin nousun verran.
+  // --- kerrosten tavoitekorkeudet ---
+  // Hirsiä on eri paksuisia: useimmat 27–34 cm, joukossa muutama järeä.
   const heights = [];
   const fill = (total, count) => {
     const w = [];
-    for (let i = 0; i < count; i++) w.push(1 + (rnd() - 0.5) * 0.3);
+    for (let i = 0; i < count; i++) w.push(rnd() < 0.18 ? 1.2 + rnd() * 0.12 : 0.86 + rnd() * 0.26);
     const sum = w.reduce((a, b) => a + b, 0);
     for (const v of w) heights.push((v / sum) * total);
   };
-  const nLow = Math.round(DIM.height / DIM.course);
-  fill(DIM.height, nLow);
+  const nLow = Math.round(low / DIM.course);
+  fill(low, nLow);
   const rise = roofType === 'mono' ? ROOF.monoSlope * span : 0;
   const nRise = Math.round(rise / DIM.course);
   if (nRise > 0) fill(rise, nRise);
   const nFront = nLow + nRise;
   const nBack = nLow;
   // kuvitteelliset jatkokerrokset päätykolmioita varten
-  while (Y0 + heights.reduce((a, b) => a + b, 0) < roofMax + 0.6) heights.push(DIM.course * (1 + (rnd() - 0.5) * 0.24));
-  const base = [Y0];
+  while (heights.reduce((a, b) => a + b, 0) < roofMax + 0.6) heights.push(DIM.course * (0.9 + rnd() * 0.25));
+  const base = [0];
   for (const h of heights) base.push(base[base.length - 1] + h);
 
-  // --- pitkien seinien saumat ---
-  // sauma k on kerroksen k alapinta; alin ja ylin sauma ovat vaakasuorassa
-  const makeSeams = (count) => {
-    const seams = [];
-    for (let k = 0; k <= count; k++) {
-      const level = k === 0 || k === count;
-      const tilt = level ? 0 : (k % 2 ? 1 : -1) * (0.005 + 0.009 * rnd());
-      const a1 = level ? 0 : 0.0025 * rnd(), k1 = 1.2 + rnd() * 1.4, p1 = rnd() * 6.28;
-      const a2 = level ? 0 : 0.0015 * rnd(), k2 = 3.1 + rnd() * 2, p2 = rnd() * 6.28;
-      const y0 = base[k];
-      seams.push((x) => y0 + tilt * (x / DIM.width) + a1 * Math.sin(k1 * x + p1) + a2 * Math.sin(k2 * x + p2));
+  const openings = { front: windowOpenings(), back: [], left: [], right: [] };
+
+  // --- pitkät seinät: saumat ja jatkokset ---
+  // Jokaisessa kerroksessa hirret kapenevat päästä toiseen 2–6 cm, ja paksu pää on eri puolella
+  // kuin alemmassa kerroksessa. Ylin sauma on vaakasuorassa.
+  const makeLongWall = (count, holes) => {
+    const seams = [() => 0];
+    const joints = [];
+    let prev = [];
+    let sign = rnd() < 0.5 ? 1 : -1;
+    for (let k = 0; k < count; k++) {
+      const below = seams[k];
+      // aukkojen korkeudella hirsi katkeaa aukkoihin; aukon ala- ja yläpuolinen hirsi jatketaan
+      // aukkojen välisen pielen kohdalta, ei aukon päältä
+      const yMid = base[k] + heights[k] / 2;
+      const band = holes.length && yMid > holes[0].y0 && yMid < holes[0].y1;
+      const edge = holes.length && !band && (Math.abs(base[k + 1] - holes[0].y0) < 0.45 || Math.abs(base[k] - holes[0].y1) < 0.45);
+      let js = [];
+      if (!band) {
+        for (let tries = 0; tries < 60; tries++) {
+          js = edge
+            ? [(rnd() - 0.5) * 0.7]
+            : rnd() < 0.35
+              ? [(rnd() - 0.5) * 1.6]
+              : [lerp(-0.34, -0.12, rnd()) * DIM.width, lerp(0.12, 0.34, rnd()) * DIM.width];
+          if (js.every((j) => prev.every((p) => Math.abs(p - j) > 0.6))) break;
+        }
+      }
+      prev = js;
+      joints.push(js);
+      if (k === count - 1) {
+        seams.push(() => base[count]);
+        continue;
+      }
+      const xs = [X0, ...js, X1];
+      sign = -sign;
+      const hs = xs.map((x, i) => {
+        const swing = (i % 2 ? -1 : 1) * sign * (0.01 + rnd() * 0.017);
+        return clamp(heights[k] + swing - 0.7 * (below(x) - base[k]) + (rnd() - 0.5) * 0.012, 0.225, 0.42);
+      });
+      const h = polyline(xs, hs);
+      seams.push((x) => below(x) + h(x));
     }
-    return seams;
+    return { seams, joints, count, holes };
   };
-  const seamFront = makeSeams(nFront);
-  const seamBack = makeSeams(nBack);
-  // pitkän seinän sauma k nurkassa x; seinän yläpuolella käytetään kuvitteellista jatkoa
-  const seamAt = (seams, k, x) => (k < seams.length ? seams[k](x) : base[k]);
+  const front = makeLongWall(nFront, openings.front);
+  const back = makeLongWall(nBack, openings.back);
+  // pitkän seinän sauma k kohdassa x; seinän yläpuolella käytetään kuvitteellista jatkoa
+  const seamAt = (wall, k, x) => (k <= wall.count ? wall.seams[k](x) : base[k]);
 
   // --- nurkat ---
   // O on nurkan ulkokärki, dirA osoittaa pitkää seinää pitkin sisään ja dirB päätyseinää pitkin.
   // I[i] ovat tappien välisten tasojen korkeudet nurkan keskellä: parillinen taso on
   // päätyhirren (alla) ja pitkän seinän hirren (päällä) välissä, pariton toisin päin.
-  const makeCorner = (x, z, seams, count) => {
+  const makeCorner = (x, z, wall) => {
     const I = [];
-    for (let k = 0; k < count; k++) {
-      const a = seams[k](x), h = seams[k + 1](x) - a;
+    for (let k = 0; k < wall.count; k++) {
+      const a = wall.seams[k](x), h = wall.seams[k + 1](x) - a;
       I.push(a + 0.25 * h, a + 0.75 * h);
     }
-    return { O: [x, z], dirA: [x < 0 ? 1 : -1, 0], dirB: [0, z < 0 ? 1 : -1], I, nA: count };
+    return { O: [x, z], dirA: [x < 0 ? 1 : -1, 0], dirB: [0, z < 0 ? 1 : -1], I, nA: wall.count };
   };
   const corners = {
-    backLeft: makeCorner(X0, Z0, seamBack, nBack),
-    backRight: makeCorner(X1, Z0, seamBack, nBack),
-    frontLeft: makeCorner(X0, Z1, seamFront, nFront),
-    frontRight: makeCorner(X1, Z1, seamFront, nFront),
+    backLeft: makeCorner(X0, Z0, back),
+    backRight: makeCorner(X1, Z0, back),
+    frontLeft: makeCorner(X0, Z1, front),
+    frontRight: makeCorner(X1, Z1, front),
   };
 
   const pieces = [];
@@ -122,25 +175,45 @@ export function planCabin({ roofType = 'mono', seed = 7 } = {}) {
     };
   };
 
-  // --- pitkät seinät: kolme hirttä peräkkäin, jatkokset limittäin ---
-  const longWall = (name, zc, seams, count, cornerL, cornerR) => {
-    let prev = [];
-    for (let k = 0; k < count; k++) {
-      let joints;
-      for (let tries = 0; tries < 40; tries++) {
-        joints = [lerp(-3.4, -1.3, rnd()), lerp(1.3, 3.4, rnd())];
-        if (joints.every((j) => prev.every((p) => Math.abs(p - j) > 0.7))) break;
+  // Aukot katkaisevat hirren tai loveavat sitä: aukon korkeudella hirsi puuttuu aukon kohdalta,
+  // aukon alla ja päällä siitä jää jäljelle osa.
+  const spansFor = (s0, s1, yb, yt, holes) => {
+    let spans = [{ s0, s1, yb, yt }];
+    for (const hole of holes) {
+      const next = [];
+      for (const sp of spans) {
+        const a = Math.max(sp.s0, hole.x0), b = Math.min(sp.s1, hole.x1);
+        if (b - a < 0.01) {
+          next.push(sp);
+          continue;
+        }
+        const m = (a + b) / 2, cb = sp.yb(m), ct = sp.yt(m);
+        if (ct <= hole.y0 + 0.012 || cb >= hole.y1 - 0.012) {
+          next.push(sp);
+          continue;
+        }
+        if (sp.s0 < a - 0.01) next.push({ ...sp, s1: a });
+        if (cb < hole.y0 - 0.03) next.push({ s0: a, s1: b, yb: sp.yb, yt: (x) => Math.min(sp.yt(x), hole.y0) });
+        else if (ct > hole.y1 + 0.03) next.push({ s0: a, s1: b, yb: (x) => Math.max(sp.yb(x), hole.y1), yt: sp.yt });
+        if (sp.s1 > b + 0.01) next.push({ ...sp, s0: b });
       }
-      prev = joints;
-      const cuts = [X0, ...joints, X1];
+      spans = next;
+    }
+    return spans;
+  };
+
+  const longWall = (name, zc, wall, cornerL, cornerR) => {
+    for (let k = 0; k < wall.count; k++) {
+      const cuts = [X0, ...wall.joints[k], X1];
       for (let i = 0; i < cuts.length - 1; i++) {
         const first = i === 0, last = i === cuts.length - 2;
         const s0 = first ? X0 + DIM.wall : cuts[i] + 0.001;
         const s1 = last ? X1 - DIM.wall : cuts[i + 1] - 0.001;
-        const yb = seams[k], yt = seams[k + 1];
+        const yb = wall.seams[k], yt = wall.seams[k + 1];
         const tenon = (corner) => ({ type: 'tenon', corner, role: 'A', bot: { i: 2 * k }, top: { i: 2 * k + 1 } });
         pieces.push({
           wall: name, axis: 'x', c: zc, course: k, s0, s1, yb, yt,
+          spans: spansFor(s0, s1, yb, yt, wall.holes),
           start: first ? tenon(cornerL) : { type: 'butt' },
           end: last ? tenon(cornerR) : { type: 'butt' },
           ...wood(yb, yt, s0, s1),
@@ -148,18 +221,18 @@ export function planCabin({ roofType = 'mono', seed = 7 } = {}) {
       }
     }
   };
-  longWall('front', Z1 - HW, seamFront, nFront, corners.frontLeft, corners.frontRight);
-  longWall('back', Z0 + HW, seamBack, nBack, corners.backLeft, corners.backRight);
+  longWall('front', Z1 - HW, front, corners.frontLeft, corners.frontRight);
+  longWall('back', Z0 + HW, back, corners.backLeft, corners.backRight);
 
   // --- päätyseinät: yksi hirsi kerrosta kohti, leikataan katon kaltevuuteen ---
   const endWall = (name, xc, cornerBack, cornerFront) => {
     const xCorner = cornerBack.O[0];
     // sauma j on kerroksen j alapinta: pitkän seinän kerroksen puoliväli kummassakin nurkassa
     const seam = (j) => {
-      if (j < 0) return () => Y0;
-      const yBack = (seamAt(seamBack, j, xCorner) + seamAt(seamBack, j + 1, xCorner)) / 2;
-      const yFront = (seamAt(seamFront, j, xCorner) + seamAt(seamFront, j + 1, xCorner)) / 2;
-      const a = 0.003 * rnd(), ph = rnd() * 6.28, kk = 1.5 + rnd() * 2;
+      if (j < 0) return () => 0;
+      const yBack = (seamAt(back, j, xCorner) + seamAt(back, j + 1, xCorner)) / 2;
+      const yFront = (seamAt(front, j, xCorner) + seamAt(front, j + 1, xCorner)) / 2;
+      const a = 0.004 * rnd(), ph = rnd() * 6.28, kk = 1.2 + rnd() * 1.6;
       return (z) => {
         const t = (z - Z0) / DIM.depth;
         return lerp(yBack, yFront, t) + a * Math.sin(kk * z + ph) * Math.sin(Math.PI * t);
@@ -170,7 +243,7 @@ export function planCabin({ roofType = 'mono', seed = 7 } = {}) {
       // osa, jossa hirsi on katon alla
       const under = (z) => roofY(z) - yb(z) > 0.02;
       const zs = [];
-      for (let i = 0; i <= 240; i++) zs.push(lerp(Z0 - DIM.overhang, Z1 + DIM.overhang, i / 240));
+      for (let i = 0; i <= 320; i++) zs.push(lerp(Z0 - DIM.overhang, Z1 + DIM.overhang, i / 320));
       const inside = zs.filter(under);
       if (!inside.length) break;
       const zA = inside[0], zB = inside[inside.length - 1];
@@ -179,7 +252,7 @@ export function planCabin({ roofType = 'mono', seed = 7 } = {}) {
         if (j >= corner.nA) return null;
         return {
           type: 'tenon', corner, role: 'B',
-          bot: j < 0 ? { flat: Y0 } : { i: 2 * j + 1 },
+          bot: j < 0 ? { flat: 0 } : { i: 2 * j + 1 },
           top: j === corner.nA - 1 ? { flat: true } : { i: 2 * j + 2 },
         };
       };
@@ -189,6 +262,7 @@ export function planCabin({ roofType = 'mono', seed = 7 } = {}) {
       const s1 = tf ? Z1 - DIM.wall : zB;
       pieces.push({
         wall: name, axis: 'z', c: xc, course: j, s0, s1, yb, yt,
+        spans: spansFor(s0, s1, yb, yt, openings[name]),
         start: tb || { type: 'cut' },
         end: tf || { type: 'cut' },
         ...wood(yb, yt, s0, s1),
@@ -201,9 +275,10 @@ export function planCabin({ roofType = 'mono', seed = 7 } = {}) {
   return {
     roofType,
     pieces,
+    openings,
     roofY,
     roofMax,
-    bounds: { X0, X1, Z0, Z1, Y0 },
+    bounds: { X0, X1, Z0, Z1 },
     counts: { front: nFront, back: nBack },
   };
 }

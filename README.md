@@ -1,9 +1,11 @@
-# Lande – hirsimökki piiluhirsistä
+# Lande – hirsimökki mäntykankaalla
 
-Käsin piilutetuista mäntyhirsistä veistetty mökin runko lohenpyrstönurkin, renderöitynä
-selaimessa WebGPU:lla. Sivuja on kaksi:
+Käsin piilutetuista mäntyhirsistä veistetty mökki lohenpyrstönurkin, loivalla mäntykangasrinteellä
+järven rannassa, renderöitynä selaimessa WebGPU:lla. Sivuja on kaksi:
 
-- **Mökki** (`index.html`): runko 14 × 6 m, sisäkorkeus 4 m, pulpetti- tai harjakatto.
+- **Mökki** (`index.html`): 12 × 8 m, sisäkorkeus 3 m, valettu sokkeli, neljä ikkunaa järvelle,
+  terassi, ympäri lasitettu pergola ja palju. Mökkiä voi siirtää ja kääntää tontilla, ja maa
+  muotoutuu sen alle.
 - **Mallihirsi** (`hirsi.html`): yksi täyslaatuinen 5 m hirsi. Se on lähde, josta mökin kevyet
   hirret on johdettu, ja siihen verrataan, kun mökin hirsiä muutetaan.
 
@@ -19,51 +21,142 @@ Sivu on staattinen, joten käännösvaihetta ei ole. three.js ladataan jsDelivr-
 **Julkaisu:** jokainen `main`-haaran push julkaisee sivun GitHub Pagesiin
 (`.github/workflows/pages.yml`): https://laippari.github.io/lande/
 
-| Ele | Toiminto |
+| Ele tai painike | Toiminto |
 | --- | --- |
 | 1 sormi / hiiren vasen | kierto |
 | 2 sormea / hiiren oikea | siirto; nipistys tai rulla lähentää osoitettuun kohtaan |
 | kaksoisnapautus | tarkennus napautettuun kohtaan |
-| alareunan painikkeet | valmiit näkymät |
-| aurinkopainike | valon suunta ja auringon korkeus |
-| talopainike (mökki) | katto päälle tai pois, katon tyyppi, pulpettikaton ylitykset |
+| näkymärivi | valmiit näkymät: Mökki, Tontti, Terassi, Nurkka, Ranta, Varvikko |
+| Valo | valon suunta ja auringon korkeus |
+| Katto | katto päälle tai pois, tyyppi, pulpettikaton ylitys edessä, takana ja sivuilla |
+| Terassi | terassi päälle tai pois, pergolan pää, palju / poreallas / ei allasta, liukulasit |
+| Paikka | mökin siirto napauttamalla maastoa, mökin suunta, palautus |
 
 ## Mökki
 
 **Runko** (`src/mokki/plan.js`)
 
-- Ulkomitat 14 × 6 m, hirren paksuus 20 cm, sokkeli 30 cm. Sisäkorkeus on 4 m matalalla
-  seinällä; pulpettikatossa etuseinä on noin 0,8 m korkeampi.
-- Seinä on pino hirsikerroksia, joiden korkeus vaihtelee (keskimäärin 28,5 cm). Saumat eivät
-  ole viivasuoria: hirsi on tyvestä paksumpi kuin latvasta, joten sauma viettää hieman ja
-  tyvet vuorottelevat kerroksittain.
-- Pitkillä seinillä on kolme hirttä peräkkäin, ja jatkokset ovat limittäin. Päätyseinät ovat
-  yhtä hirttä, ja niiden kerrokset ovat puoli kerrosta ylempänä kuin pitkien seinien.
+- Ulkomitat 12 × 8 m, hirren paksuus 20 cm. Sisäkorkeus on 3 m lattiasta matalan seinän
+  yläpäähän; pulpettikatossa etuseinä on noin 1,1 m korkeampi.
+- Hirret kapenevat tyvestä latvaan, joten kerros on toisesta päästä paksumpi kuin toisesta
+  (esimerkiksi 27 cm → 31 cm), ja seuraava kerros veistetään sen selkään. Tyvet vuorottelevat,
+  joten seinä pysyy keskimäärin vaakasuorassa ja saumat viettävät vuorotellen kumpaankin
+  suuntaan. Kerrosten korkeus vaihtelee 23–42 cm; joukossa on muutama järeä hirsi.
+- Pitkillä seinillä hirsiä on kaksi tai kolme peräkkäin, ja jatkokset ovat limittäin.
+  Päätyseinät ovat yhtä hirttä ja puoli kerrosta ylempänä kuin pitkät seinät.
 - Nurkissa hirret lomittuvat lohenpyrstötapein. Tappien väliset tasot viettävät kahteen
-  suuntaan ja ovat samat molemmille hirsille, joten tapit istuvat toisiinsa.
-- Katon tyyppi määrää rungon muodon: pulpettikatossa päätyseinien ylimmät hirret leikataan
-  kaltevuuteen, harjakatossa päädyt jatkuvat kolmioina harjalle.
-- Pulpettikatolle runkoon tulee 129 hirttä, harjakatolle 124.
+  suuntaan ja ovat samat molemmille hirsille.
+- Etuseinässä on neljä ikkunaa kahtena parina keskellä seinää: kukin 1,0 × 2,5 m, alareuna
+  lattian rajassa, mäntykarmit ja vuorilaudat. Aukot katkaisevat hirret ja loveavat aukon
+  ylä- ja alapuolisen hirren.
+- Pulpettikatolle runkoon tulee 86 hirttä, harjakatolle 81.
+
+**Perustus** (`src/mokki/structure.js`)
+
+- Mökki seisoo valetun betonisokkelin päällä: yhtenäinen kehä seinien alla, näkyvissä noin
+  35 cm, muottilautojen jäljet pinnassa ja tuuletusluukut kyljissä. Sokkelin sisällä on
+  tuulettuva ryömintätila (rossipohja); lattian pinta on 33 cm sokkelin yläpinnasta eli
+  ensimmäisen hirsikerran yläreunan tasolla, ja sisäkorkeus mitataan siitä.
+- Sokkelin ympärillä on puolen metrin kaista tummaa soraa. Sävy on tumma, jotta perustus ei
+  erotu metsänpohjasta.
+- Maa muotoillaan mökin ja terassin alta tasaiseksi (ks. Tontti), joten korkeita pilareita ei
+  tarvita missään kohdassa tonttia.
 
 **Kevyt hirsi** (`src/mokki/mesh.js`, `src/mokki/wood.js`)
 
-- Koko runko on yksi verkko (noin 29 000 kolmiota) ja yksi materiaali. Mallihirressä on
-  yksinään 207 000 kolmiota.
+- Hirret, laudat ja palkit ovat yksi verkko (noin 30 000 kolmiota terassin kanssa) ja yksi
+  materiaali. Mallihirressä on yksinään 207 000 kolmiota.
 - Hirsi on verkossa vain muutama taso. Piilutuksen aallot, vuosirenkaat ja oksat lasketaan
   varjostimessa pikseleittäin samalla periaatteella kuin mallihirressä: väri tulee pikselin
   paikasta rungon sisällä, ja piiluiskun kouru siirtää paikkaa pari milliä syvemmälle.
 - Iskut ja oksat arvotaan varjostimessa hirren siemenestä, joten hirsikohtaisia tekstuureja
-  ei tarvita. Kohina luetaan yhdestä pienestä 3D-tekstuurista.
-- Jokaisella hirrellä on oma siemen ja koko: iskut, oksat, renkaiden leveydet, sydänpuun
-  osuus ja sävy vaihtelevat hirrestä toiseen.
+  ei tarvita. Sahatavara (laudat, palkit) käyttää samaa puuta ilman piilutusta.
 - Kaukaa katsottaessa hienoin rakenne (syyt, oksat) jätetään laskematta.
 
 **Katto** (`src/mokki/roof.js`)
 
 - Malli ja mitat ovat talo-projektista: tumma konesaumapelti, pystysaumat 0,5 m välein lappeen
   suuntaan, otsalaudat reunoissa. Pulpettikaton kaltevuus on 14 % ja harjakaton 1:2.
-- Katon voi ottaa pois ja sen tyypin voi vaihtaa. Pulpettikatossa voi säätää ylitystä edessä
-  (0–2,5 m) ja sivuilla (0–1,5 m); harjakatossa päätyräystään ylitystä.
+- Pulpettikatossa ylitystä voi säätää edessä ja takana (0–3 m) sekä sivuilla (0–1,5 m);
+  harjakatossa päätyräystään ylitystä.
+
+**Terassi** (`src/mokki/terrace.js`)
+
+- Talo-projektin pienempi terassimalli sovitettuna mökin leveyteen: 150 mm laudoista tehty
+  terassi kulkee etuseinän päästä päähän (12 m) ja on 4,4 m syvä.
+- Toisessa päässä on 3,3 m leveä pergola (150 × 150 mm puuta, lasikatto, kallistus 5 % sivulle),
+  joka jatkuu terassin ulkoreunan yli 2,6 m kasvihuoneena. Pergola on lasitettu ympäri:
+  ulkosivulla on kiinteä lasi hoikkien pylväiden välissä, päädyssä ja terassin puolella
+  liukulasit. Leveys on valittu niin, että pergola mahtuu mökin nurkan ja ikkunoiden väliin.
+- Pergolan alla on terassiin upotettu palju (Ø 1,95 m, lämpöpuu, kamina ja savupiippu lasikaton
+  läpi) tai poreallas (2,2 × 2,2 m). Terassilaudat on sahattu altaan muotoon.
+- Pergolan voi peilata mökin kumpaan päähän tahansa.
+- Terassi seisoo matalilla tummilla betoniharkoilla (240 × 240 mm). Harkot ja kannatinpalkit
+  on vedetty 0,7–0,85 m reunoilta terassin alle, joten ne eivät näy etureunasta; terassin
+  reuna on uloke. Portaat ulkoreunalta maahan mitoittuvat maaston mukaan, ja kaide tulee vain,
+  jos pudotusta on yli 70 cm.
+
+## Tontti
+
+Esikuvana ovat Metsähallituksen Laatumaan myynnissä olevat Mäntyharjun rantatontit (Korpijärven
+Iso Kuivinniemi, Peruvesi, Huuhtjärvi): tasaikäinen hoikka männikkö, yhtenäinen sammal- ja
+varpumatto sammaleisine kivineen ja ranta, jossa metsä ulottuu vesirajaan.
+
+**Maasto** (`src/tontti/terrain.js`)
+
+- Tontti on 90 m leveä ja ulottuu rannasta 118 m rinteeseen (noin 1,06 ha). Rinne on noin
+  4,5 % ja siinä on tasaisempi hylly; tontin takana on harjun laki.
+- Ranta: metsä ja varvikko jatkuvat vesirajaan asti. Rannassa on matala törmä, kivinen
+  rantaviiva ja lehtipuureunus (leppiä, koivuja, pajupensaita), jotka kurottavat veden ylle.
+  Paljasta hiekkaa on vain kapea märkä kaista; hiekkapohja kuultaa matalassa, kirkkaassa mutta
+  ruskehtavassa vedessä muutaman metrin matkalla, ja matalikossa kasvaa harvaa kortetta.
+- Rakennuspaikan muotoilu: mökin ja terassin alta maa tasataan jalanjäljen luonnollisen maan
+  keskikorkeuteen (leikkaus ja täyttö tasan) ja liitetään ympäröivään rinteeseen noin kuuden
+  metrin matkalla. Muotoilu seuraa mökkiä, minne tahansa se siirretään: maaston verkon
+  korkeudet päivitetään, ja puut, kivet ja mättäät nousevat tai laskevat maan mukana
+  varjostimessa.
+- Korkeus lasketaan yhdestä funktiosta (`heightAt`), jota käyttävät maaston verkko, mökin
+  perustus ja kamera.
+- Metsänpohja: kellanvihreä sammalmatto (seinä- ja kerrossammal), sen päällä mustikka ja
+  puolukka; kanervaa ja poronjäkälää vain kuivimmilla paikoilla, puiden tyvillä
+  neulaskariketta. Läheltä näkyy sammalen, neulasten ja risujen rakenne.
+
+**Metsä** (`src/tontti/forest.js`, `src/tontti/atlas.js`)
+
+- Tontilla on noin 440 puuta, joista kaksi kolmasosaa on hoikkia, suoria mäntyjä (16–23 m,
+  rinnankorkeusläpimitta 17–30 cm): tyvellä harmaanruskea kilpikaarna, muutaman metrin
+  korkeudelta oranssi hilseilevä kaarna, pieni latvus korkealla ja sen alla kuolleita
+  oksantynkiä. Männyn oksat ovat oksan suuntaisia neulasviuhkoja, eivät pyöreitä tupsuja.
+  Seassa on nuoria mäntyjä, alikasvoskuusia, koivuja, haaparyhmä, katajia ja pihlajia.
+  Tontin ympärillä on noin 1 500 kevyempää puuta taustana.
+- Kiviä on noin 300: seitsemän isoa siirtolohkaretta, sammaleisia maakiviä ryhminä ja
+  rantaviivan kivikko. Metsässä kivet ovat sammalen ja rupijäkälän peitossa, vesirajassa
+  paljaita ja märkiä.
+- Varvikko on noin 37 000 mätästä (puhelimessa 26 000): mustikkaa, puolukkaa, kanervaa ja
+  metsälauhaa luonnollisessa koossaan (puolukka 10–20 cm, mustikka 20–30 cm, kanerva 25–40 cm);
+  rannassa heinää ja saraa. Laji valitaan kasvupaikan kuivuudesta.
+- Kasvien kuvat piirretään käynnistyksessä kanvaasille; kuvatiedostoja ei ole.
+
+**Mökin siirto**
+
+- Paikka-paneelista mökin voi siirtää napauttamalla maastoa ja kääntää liukusäätimellä.
+  Jalanjälki pysyy tontilla ja kuivalla maalla.
+- Puut, kivet ja mättäät katoavat mökin ja terassin alta. Mökin edessä on pihapiiri, josta puut
+  on kaadettu, ja siitä rantaan näkymälinja, jolta on raivattu matalat puut mutta männyt ja
+  rannan lehtipuureunus jätetty. Kaikki tämä tehdään varjostimessa: jokainen kasvin kärki
+  tietää tyvensä paikan, ja jalanjäljen sisään jäävät kutistuvat pisteeksi. Siirrossa
+  päivitetään maaston korkeudet ja rakennetaan uudelleen vain terassin harkot ja portaat.
+- Mökki-näkymä hakee kuvakulman, josta mökki näkyy runkojen välistä.
+
+**Keveys**
+
+- Puut ovat kahdessa verkossa (rungot ja lehvästö), kivet yhdessä ja varvikko alueittain;
+  maasto on harveneva ruudukko (46 000 kolmiota). Kohtauksessa on noin 490 000 kolmiota.
+- Varjokartta piirretään vain, kun aurinko, mökki tai kuvattava alue muuttuu, ei joka ruudulla.
+  Se seuraa kameran kohdetta: läheltä tarkka, kaukaa koko tontin kattava.
+- Varvikko piirretään vain kameran lähellä (60 m). Jos laite ei pysy tahdissa alimmallakaan
+  tarkkuudella, etäisyyttä lyhennetään.
+- Kaukaa kaarnan kuvio sulautuu tasaiseksi sävyksi, ja kaarnan kohouma lasketaan vain läheltä.
 
 ## Mallihirsi
 
@@ -83,13 +176,15 @@ Sivu on staattinen, joten käännösvaihetta ei ole. three.js ladataan jsDelivr-
   WebGL 2:lla. Käytössä oleva tekniikka näkyy otsikon vieressä.
 - Liikkeessä kuva piirretään 4 × MSAA:lla ja tarkkuus mukautuu laitteen nopeuteen (tavoite yli
   40 kuvaa sekunnissa). Kun kuva pysähtyy, se piirretään ylinäytteistettynä.
-- `src/env.js`: aurinko varjoineen, taivas ympäristökarttana, maa ja kaukainen metsänreuna.
-  Ambient occlusion himmentää vain taivaan valoa.
+- `src/env.js`: aurinko varjoineen, taivas ympäristökarttana ja kaukainen metsänreuna
+  (mallihirren sivulla myös hiekkapiha). Ambient occlusion himmentää vain taivaan valoa.
+- `src/noise.js`: yksi pieni 3D-kohinatekstuuri varjostimille ja sama kohina JavaScriptille.
 - `?mittari` (tai `#mittari`): kohde pyörii itsestään ja otsikon alla näkyy ruutuaika liikkeessä,
   kuvataajuus ja käytössä oleva tarkkuus.
 - Osoiteparametrit: `?view=…`, `?az=…&el=…` (aurinko), `?q=mobile|desktop`, `?pr=…`, `?ssaa=…`,
   `?noao`, `?nostill`, `?webgl`, `?webgpu`, `?cam=x,y,z,tx,ty,tz`. Mökissä lisäksi `?katto=0`,
-  `?tyyppi=harja`, `?etu=…` ja `?sivu=…`.
+  `?tyyppi=harja`, `?etu=…`, `?taka=…`, `?sivu=…`, `?terassi=0`, `?paa=oikea`, `?allas=spa|ei`,
+  `?lasit=0` sekä mökin paikka `?x=…&z=…&suunta=…`.
 
 ## Referenssit
 
@@ -98,12 +193,23 @@ Sivu on staattinen, joten käännösvaihetta ei ole. three.js ladataan jsDelivr-
   piilukirveen jälki läheltä.
 - [Blocklayer: log dovetail](https://www.blocklayer.com/woodjoints/log-dovetail): täyden
   lohenpyrstön tasot viettävät kahteen suuntaan.
+- [Laatumaa: Mäntyharjun tontit](https://www.laatumaa.fi/tontit-ja-rakennukset/?mode=list&municipality%5B%5D=M%C3%A4ntyharju&itemgroup=tontit&orderby=price-desc):
+  rantatonttien valokuvat (Korpijärvi, Peruvesi, Huuhtjärvi) männikön, metsänpohjan ja rannan
+  esikuvina. Kuvia on käytetty vain vertailuun; mallissa ei ole niistä mitään.
+- [Luke: Metsätyypit – opas kasvupaikkojen luokitteluun](https://jukuri.luke.fi/server/api/core/bitstreams/30b663b3-9fbf-4b77-9dd9-9f2fbb7b64e3/content):
+  puolukkatyypin (kuivahko kangas) puusto, varpujen peittävyydet ja pohjakerros.
+- [Luontoportti](https://luontoportti.com/): puolukan, mustikan ja kanervan koko ja värit.
 
 ## Rajoitukset
 
 - Testaus on tehty headless-Chromiumissa ohjelmallisella WebGPU-laitteella ja WebGL 2
-  -varatilalla. Mallihirsi on ajettu iPhonella WebGPU:lla; mökkiä ei vielä.
-- Mökki on pelkkä runko: ei lattiaa, aukkoja, väliseiniä eikä kattotuoleja. Pitkien seinien
-  jatkokset ovat suoria puskuliitoksia.
+  -varatilalla. Mallihirsi ja aiempi mökin runko on ajettu iPhonella WebGPU:lla; tonttia ei
+  vielä. Ohjelmallisella laitteella tontti on noin 3,5 kertaa raskaampi kuin pelkkä runko.
+- Tontti on alustava malli eikä mikään tietty kiinteistö. Vesi on tyyni eikä liiku, eikä
+  tuulta ole.
+- Maan muotoilu on pelkkä tasaus: tukimuureja, salaojia tai ajotietä ei ole.
+- Mökissä ei ole ovia, väliseiniä, kattotuoleja eikä sisustusta. Ikkunoissa on karmit ja lasi
+  mutta ei puitteita. Pitkien seinien jatkokset ovat suoria puskuliitoksia.
 - Mökin hirsissä kyljen aallot ovat varjostuksessa ja puun kuviossa, eivät ääriviivassa.
+- Liikkeessä mättäiden ohuet varret voivat näkyä rasterina; pysähtynyt kuva on sileä.
 - Hirret ovat tuoreita: kuivumishalkeamia ja harmaantumista ei ole.
