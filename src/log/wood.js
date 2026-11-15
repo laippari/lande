@@ -28,7 +28,7 @@ const srgb = (hex) => {
 };
 
 // Tuoreen männyn värit: pintapuu on kermanvaaleaa, sydänpuu hieman punertavampaa.
-const COL = {
+export const COL = {
   sapEarly: srgb('#f2e0b6'),
   sapLate: srgb('#d2a25f'),
   heartEarly: srgb('#ebc998'),
@@ -52,7 +52,7 @@ const emptyKnots = () => ({ data: new Float32Array(KNOT_TEX_W * 4).fill(-1), wid
 
 // --- apufunktiot ---------------------------------------------------------------
 
-const hash11 = Fn(([p]) => {
+export const hash11 = Fn(([p]) => {
   const q = fract(p.mul(0.1031)).toVar();
   q.mulAssign(q.add(33.33));
   q.mulAssign(q.add(q));
@@ -60,7 +60,7 @@ const hash11 = Fn(([p]) => {
 });
 
 // Pehmeä yksiulotteinen kohina: x = arvo välillä −1…1, y = derivaatta.
-const noise1 = Fn(([t]) => {
+export const noise1 = Fn(([t]) => {
   const i = floor(t);
   const f = t.sub(i);
   const a = hash11(i);
