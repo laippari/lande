@@ -15,7 +15,7 @@
 import * as THREE from 'three/webgpu';
 import {
   float, vec2, vec3, attribute, uv, texture, positionLocal, positionWorld, normalLocal, normalWorld, mix, smoothstep,
-  length, normalize, cameraPosition, cameraViewMatrix, transformNormalToView, floor, select, uniform, min,
+  length, normalize, cameraPosition, cameraViewMatrix, transformNormalToView, floor, select, uniform, min, fract, sin, dot,
 } from 'three/tsl';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SITE, naturalHeight, inland, dryness, coverAt, sandAt, footprint, footprintDistance, houseDistance, buildingDistance, cameraCleared, padWeightNode, shoreZ } from './terrain.js';
@@ -599,8 +599,13 @@ function tuftChunks(rnd, atlas, quality) {
   const local = positionLocal;
   const rx = local.x.mul(iq.x).sub(local.z.mul(iq.y)), rz = local.x.mul(iq.y).add(local.z.mul(iq.x));
   const dist = length(ip.xyz.sub(cameraPosition));
-  const range = uniform(60);
-  const far = smoothstep(range.mul(0.65), range, dist).oneMinus();
+  const range = uniform(quality === 'mobile' ? 120 : 170);
+  // Kauempana piirretään vain osa mättäistä mutta isompina, joten varvikko näkyy kaukaa yhtä
+  // peittävänä ja piirtäminen pysyy kevyenä.
+  const pick = fract(sin(dot(ip.xz, vec2(12.9898, 78.233))).mul(43758.5453));
+  const keep = mix(float(1), float(0.1), smoothstep(range.mul(0.1), range.mul(0.7), dist));
+  const grow = keep.inverseSqrt().min(3.2);
+  const far = smoothstep(range.mul(0.85), range, dist).oneMinus().mul(pick.lessThan(keep).toFloat()).mul(grow);
   // ei mökin eikä terassin alla eikä sokkelin sorakaistalla
   const clear = footprintDistance(ip.xz).greaterThan(0.15).and(houseDistance(ip.xz).greaterThan(0.7)).toFloat();
   // mätäs seuraa muotoiltua maata
@@ -625,7 +630,9 @@ function tuftChunks(rnd, atlas, quality) {
   const chunks = [];
   let total = 0;
   for (let cz = -78; cz < 57; cz += cell) {
-    for (let cx = SITE.x0; cx < SITE.x1; cx += cell) {
+    for (let cx = SITE.x0 - 30; cx < SITE.x1 + 30; cx += cell) {
+      // tontin ulkopuolella harvemmin mutta isompia mättäitä: kaukaa katsottuna sama vaikutelma
+      const outside = cx < SITE.x0 || cx >= SITE.x1;
       const ipA = [], iqA = [];
       for (let gz = cz; gz < cz + cell - 1e-6; gz += step) {
         for (let gx = cx; gx < cx + cell - 1e-6; gx += step) {
@@ -643,7 +650,7 @@ function tuftChunks(rnd, atlas, quality) {
           }
           const shoreline = d < 2.6;
           const cover = shoreline ? 0.85 : coverAt(x, z);
-          if (rnd() > Math.pow(cover, 1.2) * 1.05 + 0.02) continue;
+          if (rnd() > (Math.pow(cover, 1.2) * 1.05 + 0.02) * (outside ? 0.4 : 1)) continue;
           if (sandAt(x, z) > 0.75) continue;
           const dry = dryness(x, z) + (rnd() - 0.5) * 0.25;
           const r = rnd();
@@ -653,7 +660,7 @@ function tuftChunks(rnd, atlas, quality) {
               : dry > 0.45 ? (r < 0.55 ? 0 : r < 0.85 ? 1 : r < 0.93 ? 3 : 2)
                 : (r < 0.65 ? 1 : r < 0.9 ? 0 : 3);
           const T = TUFT[kind];
-          const w = (T.w[0] + rnd() * (T.w[1] - T.w[0])) * (shoreline && kind === 3 ? 1.5 : 1);
+          const w = (T.w[0] + rnd() * (T.w[1] - T.w[0])) * (shoreline && kind === 3 ? 1.5 : 1) * (outside ? 1.5 : 1);
           ipA.push(x, naturalHeight(x, z) - 0.02, z, w);
           iqA.push(Math.cos(a), Math.sin(a), T.tile[rnd() < (kind === 2 ? 0.35 : 0.6) ? 0 : 1], TUFT_HEIGHT[kind]);
         }
@@ -676,7 +683,7 @@ function tuftChunks(rnd, atlas, quality) {
       total += g.instanceCount;
     }
   }
-  return { chunks, total, cards, range };
+  return { chunks, total, cards, range, range0: range.value, material: m, pos, uvs, idx };
 }
 
 export function createForest({ quality }) {
@@ -718,18 +725,76 @@ export function createForest({ quality }) {
   // Varvikko piirretään vain kameran lähellä. Jos laite ei pysy tahdissa, etäisyyttä lyhennetään.
   let level = 0;
   const update = (camera) => {
-    const reach = [72, 46, 28][level];
+    const reach = [tufts.range0 + 12, 72, 42][level];
     for (const c of tufts.chunks) c.visible = c.userData.centre.distanceTo(camera.position) < reach;
   };
   const shed = () => {
     if (level >= 2) return false;
     level++;
-    tufts.range.value = [60, 38, 22][level];
+    tufts.range.value = [tufts.range0, 60, 34][level];
     return true;
   };
 
+  // Mökin ympärille aina reilusti varvikkoa: tiheä vyöhyke sokkelin sorakaistan ulkoreunasta
+  // noin yhdeksän metrin päähän, sekä terassin ympärille. Rakennetaan uudelleen, kun mökki siirtyy.
+  const ring = new THREE.Mesh(new THREE.InstancedBufferGeometry(), tufts.material);
+  ring.layers.set(1);
+  ring.receiveShadow = true;
+  ring.frustumCulled = false;
+  group.add(ring);
+  const surround = (place, house, boxes) => {
+    const r2 = mulberry32(911);
+    const c = Math.cos(place.yaw), s = Math.sin(place.yaw);
+    const ipA = [], iqA = [];
+    const step = quality === 'mobile' ? 0.36 : 0.3, R = 9;
+    const [hx, hz] = house;
+    const minX = -hx - R, maxX = hx + R;
+    let minZ = -hz - R, maxZ = hz + R;
+    for (const [bx, bz, bhx, bhz] of boxes) {
+      minZ = Math.min(minZ, bz - bhz - 5);
+      maxZ = Math.max(maxZ, bz + bhz + 5);
+    }
+    for (let lz = minZ; lz < maxZ; lz += step) {
+      for (let lx = minX; lx < maxX; lx += step) {
+        const px = lx + r2() * step, pz = lz + r2() * step;
+        // etäisyys mökistä ja terassista: vyöhyke harvenee ulospäin
+        const qx = Math.abs(px) - hx, qz = Math.abs(pz) - hz;
+        let dHouse = Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0);
+        for (const [bx, bz, bhx, bhz] of boxes) {
+          if (!(bhx > 0)) continue;
+          const ux = Math.abs(px - bx) - bhx, uz = Math.abs(pz - bz) - bhz;
+          dHouse = Math.min(dHouse, Math.hypot(Math.max(ux, 0), Math.max(uz, 0)) + Math.min(Math.max(ux, uz), 0) + 0.3);
+        }
+        if (dHouse < 0.55 || dHouse > R) continue;
+        if (r2() > 0.95 - 0.55 * (dHouse / R) ** 1.5) continue;
+        const x = place.x + px * c + pz * s, z = place.z - px * s + pz * c;
+        if (inland(x, z) < 3) continue;
+        const dry = dryness(x, z) + (r2() - 0.5) * 0.3;
+        const r = r2();
+        // mustikkaa ja puolukkaa, kuivemmalla kanervaa, joukossa metsälauhaa
+        const kind = dry > 0.75 ? (r < 0.4 ? 0 : r < 0.75 ? 2 : r < 0.9 ? 1 : 3) : (r < 0.48 ? 1 : r < 0.88 ? 0 : r < 0.95 ? 3 : 2);
+        const T = TUFT[kind];
+        const w = (T.w[0] + r2() * (T.w[1] - T.w[0])) * (0.95 + r2() * 0.25);
+        const a = r2() * TAU;
+        ipA.push(x, naturalHeight(x, z) - 0.02, z, w);
+        iqA.push(Math.cos(a), Math.sin(a), T.tile[r2() < 0.55 ? 0 : 1], TUFT_HEIGHT[kind]);
+      }
+    }
+    const g = new THREE.InstancedBufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(tufts.pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(tufts.uvs, 2));
+    g.setIndex(tufts.idx);
+    g.setAttribute('ip', new THREE.InstancedBufferAttribute(new Float32Array(ipA), 4));
+    g.setAttribute('iq', new THREE.InstancedBufferAttribute(new Float32Array(iqA), 4));
+    g.instanceCount = ipA.length / 4;
+    ring.geometry.dispose();
+    ring.geometry = g;
+    ring.visible = g.instanceCount > 0;
+    stats.ring = g.instanceCount;
+  };
+
+  const stats = { trees: trees.filter((t) => t.lod === 0).length, forest: trees.length, boulders: boulders.length, tufts: tufts.total, ring: 0, treeTriangles: triangles, tuftTriangles: tufts.total * tufts.cards * 2 };
   return {
-    group, trees, boulders, update, shed, level: () => level,
-    stats: { trees: trees.filter((t) => t.lod === 0).length, forest: trees.length, boulders: boulders.length, tufts: tufts.total, treeTriangles: triangles, tuftTriangles: tufts.total * tufts.cards * 2 },
+    group, trees, boulders, update, shed, surround, level: () => level, stats,
   };
 }

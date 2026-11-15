@@ -92,7 +92,8 @@ export function sandAt(x, z) {
 
 // varpujen peittävyys 0…1
 export function coverAt(x, z) {
-  const c = 0.2 + 1.25 * fbm(x / 4.2, z / 4.2, 3, 37) - 0.35 * fbm(x / 1.3, z / 1.3, 2, 43);
+  // Kangasmetsässä varvikko peittää pohjan lähes yhtenäisesti; harvempia kohtia on laikuittain.
+  const c = 0.5 + 1.0 * fbm(x / 4.2, z / 4.2, 3, 37) - 0.28 * fbm(x / 1.3, z / 1.3, 2, 43);
   return Math.min(Math.max(c, 0), 1) * (1 - sandAt(x, z));
 }
 
@@ -329,7 +330,16 @@ export function createTerrain(coverTex) {
   const farK = smoothstep(22, 55, dist).mul(shrubMask);
   // laaja laikutus: tummempia ja ruskeampia aloja, jottei pohja näytä nurmikolta
   const mottle = mix(vec3(0.66, 0.7, 0.74), vec3(1.1, 1.04, 0.9), smoothstep(-0.5, 0.5, nA.x.add(nB.y.mul(0.3))));
-  const patchy = veg.mul(mix(float(1), smoothstep(-0.25, 0.35, nB.x).mul(0.5).add(0.72), farK)).mul(mottle);
+  // Kaukaa varvikko näkyy mättäinä: tummia varpujen latvoja ja vaaleampia sammalaukkoja
+  // niiden välissä, ei tasaisena nurmena. Lähellä kuvion tekevät mättäät itse, kauempana
+  // varjostin; kuvion koko kasvaa etäisyyden mukana, jottei se suodatu tasaiseksi.
+  const fineClumps = smoothstep(-0.35, 0.3, nC.x.add(nB.x.mul(0.5)));
+  const wideClumps = smoothstep(-0.4, 0.35, nB.x.add(nA.y.mul(0.8)).add(nB.z.mul(0.4)));
+  const clumps = mix(fineClumps, wideClumps, smoothstep(25, 60, dist));
+  const shrubDark = mix(GROUND.bilberry, GROUND.lingon, 0.55).mul(0.6);
+  const toned = mix(veg.mul(vec3(1.05, 1.0, 0.86)), shrubDark, clumps.mul(shrubMask.add(0.25).min(1)));
+  const farK2 = smoothstep(8, 30, dist);
+  const patchy = mix(veg, toned, farK2).mul(mottle).mul(mix(float(1), float(0.82), smoothstep(40, 120, dist)));
   // neulaskarike puiden tyvillä
   const litterMask = smoothstep(0.45, 0.95, cov.r.add(nB.z.mul(0.4)).add(nC.x.mul(0.15).mul(mid)));
   const forest = mix(patchy, GROUND.litter.mul(nC.y.mul(0.2).mul(mid).add(1)), litterMask.mul(0.7));
