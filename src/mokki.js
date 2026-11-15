@@ -141,6 +141,7 @@ function build({ renderer, scene, quality, Q }) {
     footprint.boxB.value.set(...b);
     footprint.house.value.set(0, 0, DIM.width / 2, DIM.depth / 2);
     footprint.pad.value.set(level, 1);
+    forest.surround(state.place, [DIM.width / 2, DIM.depth / 2], boxes());
     roofBox();
   };
 

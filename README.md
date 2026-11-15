@@ -143,9 +143,16 @@ varpumatto sammaleisine kivineen ja ranta, jossa metsä ulottuu vesirajaan.
 - Kiviä on noin 650: parikymmentä isoa siirtolohkaretta seuralaisineen, sammaleisia maakiviä
   ryhminä ja rantaviivan kivikko. Metsässä kivet ovat sammalen ja rupijäkälän peitossa, vesirajassa
   paljaita ja märkiä.
-- Varvikko on noin 37 000 mätästä (puhelimessa 26 000): mustikkaa, puolukkaa, kanervaa ja
-  metsälauhaa luonnollisessa koossaan (puolukka 10–20 cm, mustikka 20–30 cm, kanerva 25–40 cm);
-  rannassa heinää ja saraa. Laji valitaan kasvupaikan kuivuudesta.
+- Varvikko peittää kangasmetsän pohjan lähes yhtenäisesti: noin 63 000 mätästä (puhelimessa
+  vähemmän) mustikkaa, puolukkaa, kanervaa ja metsälauhaa luonnollisessa koossaan (puolukka
+  10–20 cm, mustikka 20–30 cm, kanerva 25–40 cm); rannassa heinää ja saraa. Laji valitaan
+  kasvupaikan kuivuudesta. Tontin sivuilla mättäitä on harvemmin mutta isompina.
+- Mökin ympärillä on aina tiheä varvikko (noin 5 000 mätästä) sokkelin sorakaistan ulkoreunasta
+  noin yhdeksän metrin päähän ja terassin ympärillä. Vyöhyke rakennetaan uudelleen, kun mökki
+  siirtyy.
+- Mättäät piirretään 170 metriin asti (puhelimessa 120). Kauempana niistä piirretään vain osa
+  mutta isompina, joten varvikko näkyy myös kaukaa ilman että piirtäminen raskaantuu. Maan
+  varjostin piirtää kauas mättäiden kuvion, jonka koko kasvaa etäisyyden mukana.
 - Kasvien kuvat piirretään käynnistyksessä kanvaasille; kuvatiedostoja ei ole.
 
 **Mökin siirto ja puiden väistö**
@@ -165,11 +172,11 @@ varpumatto sammaleisine kivineen ja ranta, jossa metsä ulottuu vesirajaan.
 **Keveys**
 
 - Puut ovat kahdessa verkossa (rungot ja lehvästö), kivet yhdessä ja varvikko alueittain;
-  maasto on harveneva ruudukko (46 000 kolmiota). Kohtauksessa on noin 560 000 kolmiota.
+  maasto on harveneva ruudukko (46 000 kolmiota). Kohtauksessa on noin 720 000 kolmiota.
 - Varjokartta piirretään vain, kun aurinko, mökki tai kuvattava alue muuttuu, ei joka ruudulla.
   Se seuraa kameran kohdetta: läheltä tarkka, kaukaa koko tontin kattava.
-- Varvikko piirretään vain kameran lähellä (60 m). Jos laite ei pysy tahdissa alimmallakaan
-  tarkkuudella, etäisyyttä lyhennetään.
+- Varvikko piirretään 170 metriin asti ja harvenee etäisyyden mukana. Jos laite ei pysy
+  tahdissa alimmallakaan tarkkuudella, etäisyyttä lyhennetään.
 - Kaukaa kaarnan kuvio sulautuu tasaiseksi sävyksi, ja kaarnan kohouma lasketaan vain läheltä.
 
 ## Mallihirsi
@@ -218,7 +225,7 @@ varpumatto sammaleisine kivineen ja ranta, jossa metsä ulottuu vesirajaan.
 
 - Testaus on tehty headless-Chromiumissa ohjelmallisella WebGPU-laitteella ja WebGL 2
   -varatilalla. Mallihirsi ja aiempi mökin runko on ajettu iPhonella WebGPU:lla; tonttia ei
-  vielä. Ohjelmallisella laitteella tontti on noin neljä kertaa raskaampi kuin pelkkä runko.
+  vielä. Ohjelmallisella laitteella tontti on noin viisi kertaa raskaampi kuin pelkkä runko.
 - Tontti on alustava malli eikä mikään tietty kiinteistö. Vesi on tyyni eikä liiku, eikä
   tuulta ole.
 - Maan muotoilu on pelkkä tasaus: tukimuureja, salaojia tai ajotietä ei ole.
