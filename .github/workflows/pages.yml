@@ -1,5 +1,5 @@
 # Julkaisee sivun GitHub Pagesiin jokaisella main-haaran pushilla.
-# Sivu on staattinen (ei käännösvaihetta): julkaistaan index.html ja src/ (sekä assets/, jos on).
+# Sivu on staattinen (ei käännösvaihetta): julkaistaan index.html, hirsi.html ja src/ (sekä assets/, jos on).
 # Kertaluonteinen asetus: Settings → Pages → Build and deployment → Source: GitHub Actions.
 name: Deploy to GitHub Pages
 
@@ -33,7 +33,7 @@ jobs:
       - name: Assemble site
         run: |
           mkdir _site
-          cp index.html _site/
+          cp index.html hirsi.html _site/
           for d in src assets; do
             if [ -d "$d" ]; then cp -r "$d" _site/; fi
           done

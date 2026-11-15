@@ -17,18 +17,21 @@ export function createUI({ views, onView, onSun, backend }) {
 
   $('badge').textContent = backend;
 
-  const panel = $('light');
-  const toggle = $('sun');
+  // Paneelit (valo, katto): painike, jolla on data-panel, avaa ja sulkee oman paneelinsa.
+  const toggles = [...document.querySelectorAll('[data-panel]')];
+  const show = (id) => {
+    for (const t of toggles) {
+      const open = t.dataset.panel === id;
+      $(t.dataset.panel).hidden = !open;
+      t.setAttribute('aria-expanded', String(open));
+    }
+  };
+  for (const t of toggles) t.addEventListener('click', () => show($(t.dataset.panel).hidden ? t.dataset.panel : null));
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') show(null);
+  });
   const az = $('az');
   const el = $('el');
-  const show = (open) => {
-    panel.hidden = !open;
-    toggle.setAttribute('aria-expanded', String(open));
-  };
-  toggle.addEventListener('click', () => show(panel.hidden));
-  addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') show(false);
-  });
   const emit = () => onSun(Number(az.value), Number(el.value));
   az.addEventListener('input', emit);
   el.addEventListener('input', emit);
@@ -36,10 +39,7 @@ export function createUI({ views, onView, onSun, backend }) {
   const hint = $('hint');
   const dismiss = () => hint.classList.add('gone');
   setTimeout(dismiss, 9000);
-  $('viewer').addEventListener('pointerdown', () => {
-    dismiss();
-    show(false);
-  });
+  $('viewer').addEventListener('pointerdown', dismiss);
 
   return {
     setView(key) {

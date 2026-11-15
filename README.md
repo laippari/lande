@@ -1,10 +1,11 @@
-# Lande – piiluhirsi
+# Lande – hirsimökki piiluhirsistä
 
-Käsin piilutettu mäntyhirsi lohenpyrstöpäin, renderöitynä selaimessa WebGPU:lla. Tämä on
-ensimmäinen vaihe: yksi hirsi. Myöhemmin samoista hirsistä kootaan kokonainen mökki.
+Käsin piilutetuista mäntyhirsistä veistetty mökin runko lohenpyrstönurkin, renderöitynä
+selaimessa WebGPU:lla. Sivuja on kaksi:
 
-Hirsi on 5,0 m pitkä ja 20 cm paksu. Korkeus on tyvellä 35 cm ja latvassa 30 cm, koska hirsi
-on tehty kapenevasta rungosta (läpimitta noin 38 → 33 cm).
+- **Mökki** (`index.html`): runko 14 × 6 m, sisäkorkeus 4 m, pulpetti- tai harjakatto.
+- **Mallihirsi** (`hirsi.html`): yksi täyslaatuinen 5 m hirsi. Se on lähde, josta mökin kevyet
+  hirret on johdettu, ja siihen verrataan, kun mökin hirsiä muutetaan.
 
 ## Avaaminen
 
@@ -22,93 +23,87 @@ Sivu on staattinen, joten käännösvaihetta ei ole. three.js ladataan jsDelivr-
 | --- | --- |
 | 1 sormi / hiiren vasen | kierto |
 | 2 sormea / hiiren oikea | siirto; nipistys tai rulla lähentää osoitettuun kohtaan |
-| kaksoisnapautus | tarkennus napautettuun kohtaan hirressä |
-| alareunan painikkeet | valmiit näkymät: koko hirsi, tyvipää, piilutus, latvapää |
+| kaksoisnapautus | tarkennus napautettuun kohtaan |
+| alareunan painikkeet | valmiit näkymät |
 | aurinkopainike | valon suunta ja auringon korkeus |
+| talopainike (mökki) | katto päälle tai pois, katon tyyppi, pulpettikaton ylitykset |
 
-## Mitä mallissa on
+## Mökki
 
-**Muoto** (`src/log/shape.js`, `geometry.js`)
+**Runko** (`src/mokki/plan.js`)
 
-- Kyljet on veistetty tasoiksi 20 cm:n päähän toisistaan. Selkä on rungon kuorittua pyöreää
-  pintaa, jossa näkyvät vuolun pitkät viisteet. Alapinnassa on varaus eli ura, jolla hirsi
-  istuu alemman hirren selkään.
-- Runko ei ole viivasuora eikä pyöreä: ydin vaeltaa noin sentin ja pinta on hieman soikea.
-  Siksi veistetyn kyljen ja selän välinen särmä aaltoilee.
-- Päissä on lohenpyrstötappi. Tapin ylä- ja alapinta ovat tasoja, jotka viettävät kahteen
-  suuntaan (noin 11° seinän paksuussuunnassa ja 7° hirren suunnassa). Tappi on paksuimmillaan
-  päässä ja seinän sisäpinnan puolella, joten nurkka lukittuu, ja yläpinta viettää ulospäin,
-  joten vesi valuu pois liitoksesta. Tappi ulkonee 3,5 cm ristiin tulevan seinän pinnasta.
+- Ulkomitat 14 × 6 m, hirren paksuus 20 cm, sokkeli 30 cm. Sisäkorkeus on 4 m matalalla
+  seinällä; pulpettikatossa etuseinä on noin 0,8 m korkeampi.
+- Seinä on pino hirsikerroksia, joiden korkeus vaihtelee (keskimäärin 28,5 cm). Saumat eivät
+  ole viivasuoria: hirsi on tyvestä paksumpi kuin latvasta, joten sauma viettää hieman ja
+  tyvet vuorottelevat kerroksittain.
+- Pitkillä seinillä on kolme hirttä peräkkäin, ja jatkokset ovat limittäin. Päätyseinät ovat
+  yhtä hirttä, ja niiden kerrokset ovat puoli kerrosta ylempänä kuin pitkien seinien.
+- Nurkissa hirret lomittuvat lohenpyrstötapein. Tappien väliset tasot viettävät kahteen
+  suuntaan ja ovat samat molemmille hirsille, joten tapit istuvat toisiinsa.
+- Katon tyyppi määrää rungon muodon: pulpettikatossa päätyseinien ylimmät hirret leikataan
+  kaltevuuteen, harjakatossa päädyt jatkuvat kolmioina harjalle.
+- Pulpettikatolle runkoon tulee 129 hirttä, harjakatolle 124.
 
-**Piilutus** (`src/log/hewing.js`)
+**Kevyt hirsi** (`src/mokki/mesh.js`, `src/mokki/wood.js`)
 
-- Jokainen piilukirveen isku on matala kouru: noin 7–11 cm leveä, 2–3 mm syvä ja terän
-  mittainen. Terä on lähes pystyssä, joten kourujen väliset harjat kulkevat hirren poikki,
-  ja terän kupera muoto piirtää harjan kaarelle.
-- Veistetty pinta on kaikkien iskujen syvin kohta. Iskuja on noin 240, ja ne on arvottu
-  niin kuin veistäjä etenee: väli, kallistus ja syvyys elävät iskusta toiseen.
-- Varjostin laskee saman pinnan iskuista jokaiselle pikselille, joten harjat pysyvät terävinä
-  läheltäkin eikä tarkkuus riipu tekstuurin koosta.
+- Koko runko on yksi verkko (noin 29 000 kolmiota) ja yksi materiaali. Mallihirressä on
+  yksinään 207 000 kolmiota.
+- Hirsi on verkossa vain muutama taso. Piilutuksen aallot, vuosirenkaat ja oksat lasketaan
+  varjostimessa pikseleittäin samalla periaatteella kuin mallihirressä: väri tulee pikselin
+  paikasta rungon sisällä, ja piiluiskun kouru siirtää paikkaa pari milliä syvemmälle.
+- Iskut ja oksat arvotaan varjostimessa hirren siemenestä, joten hirsikohtaisia tekstuureja
+  ei tarvita. Kohina luetaan yhdestä pienestä 3D-tekstuurista.
+- Jokaisella hirrellä on oma siemen ja koko: iskut, oksat, renkaiden leveydet, sydänpuun
+  osuus ja sävy vaihtelevat hirrestä toiseen.
+- Kaukaa katsottaessa hienoin rakenne (syyt, oksat) jätetään laskematta.
 
-**Puuaines** (`src/log/wood.js`, `knots.js`)
+**Katto** (`src/mokki/roof.js`)
 
-- Puu on tilavuustekstuuri: väri lasketaan pikselin todellisesta paikasta rungon sisällä.
-  Etäisyys ytimestä kertoo vuosirenkaan, ja renkaan vaihe kertoo, ollaanko vaaleassa
-  kevätpuussa vai tummassa kesäpuussa. Mitään kuvaa ei ole liimattu pintaan.
-- Tyvellä on 96 vuosirengasta. Renkaat ovat ytimen lähellä 4–5 mm ja pinnassa noin 1,6 mm
-  leveitä, ja leveys vaihtelee vuodesta toiseen.
-- Renkaat kulkevat rungon pinnan suuntaisesti, joten kapeneva runko leikkaa niitä kyljessä
-  ja piirtää liekkikuvion. Piiluiskun kouru painuu pari milliä syvemmälle puuhun ja leikkaa
-  renkaita omasta kohdastaan: kyljen keskelle syntyy saarekkeita ja silmiä, reunoilla viivat
-  vain taipuvat. Tämä tulee geometriasta itsestään.
-- Sydänpuu (noin 60 % säteestä) on punertavampaa kuin pintapuu. Kyljessä se näkyy keskellä
-  kulkevana tummempana vyönä ja päissä tummempana keskustana.
-- Oksat lähtevät ytimestä kiehkuroina 35–60 cm välein. Oksa on latvaa kohti nouseva kartio;
-  rungon renkaat kiertävät sen ympäri. Osa oksista on kuollut ja jäänyt puun sisään.
-- Pinnan viimeistely riippuu työkalusta: kirveen jäljiltä kylki on sileä ja kiiltää, päätypuu
-  on tummempaa ja mattaa ja siinä näkyvät sahanjäljet.
+- Malli ja mitat ovat talo-projektista: tumma konesaumapelti, pystysaumat 0,5 m välein lappeen
+  suuntaan, otsalaudat reunoissa. Pulpettikaton kaltevuus on 14 % ja harjakaton 1:2.
+- Katon voi ottaa pois ja sen tyypin voi vaihtaa. Pulpettikatossa voi säätää ylitystä edessä
+  (0–2,5 m) ja sivuilla (0–1,5 m); harjakatossa päätyräystään ylitystä.
 
-**Valo ja ympäristö** (`src/scene.js`, `src/main.js`)
+## Mallihirsi
 
-- Aurinko on suunnattu valo, jolla on varjot; varjokartta sovitetaan hirren ja sen varjon
-  ympärille. Taivas valaisee ympäristökartan kautta, ja kartan alapuolisko on auringon
-  valaisemaa maata, joten alapinnat saavat lämpimän heijastusvalon.
-- Ambient occlusion (GTAO) himmentää vain taivaan valoa, ei auringon suoraa valoa. Maassa
-  hirren alla taivaan peittyminen lasketaan lisäksi suoraan hirren poikkileikkauksesta.
-- Liikkeessä kuva piirretään 4 × MSAA:lla ja tarkkuus mukautuu laitteen nopeuteen. Kun kuva
-  pysähtyy, se piirretään uudelleen 8 näytteen ylinäytteistyksellä (puhelimessa 4).
-- Matala aurinko on lämmin ja himmeämpi, ja kameran valotus seuraa sitä.
-- Ympärillä on hiekkapiha, kaksi harmaantunutta aluspuuta, veistolastuja ja kaukana metsän reuna.
+5,0 m pitkä ja 20 cm paksu, korkeus tyvellä 35 cm ja latvassa 30 cm.
 
-## Tekniikka
+- **Muoto** (`src/log/shape.js`, `geometry.js`): veistetyt kyljet, kuorittu pyöreä selkä, varaus
+  ja lohenpyrstötappi molemmissa päissä. Runko kapenee eikä ole viivasuora eikä pyöreä.
+- **Piilutus** (`src/log/hewing.js`): noin 240 piilukirveen iskua, kukin matala kouru. Veistetty
+  pinta on kaikkien iskujen syvin kohta, ja varjostin laskee sen pikseleittäin.
+- **Puuaines** (`src/log/wood.js`, `knots.js`): tilavuustekstuuri. Tyvellä on 96 vuosirengasta,
+  sydänpuu on noin 60 % säteestä, ja oksat lähtevät ytimestä kiehkuroina.
 
-- three.js `WebGPURenderer` ja TSL-varjostimet. Jos selain ei tue WebGPU:ta, sama koodi
-  ajetaan WebGL 2:lla (`?webgl` pakottaa sen). Käytössä oleva tekniikka näkyy otsikon vieressä.
-- Hirren verkossa on noin 207 000 kolmiota, ja se rakennetaan selaimessa noin 0,3 sekunnissa.
-- Jos WebGPU antaa laitteella virheen käynnistyksen aikana, sivu latautuu itsestään uudelleen
-  WebGL 2 -varatilaan. `?webgpu` kokeilee WebGPU:ta uudelleen.
-- `?mittari` (tai `#mittari`): hirsi pyörii itsestään ja otsikon alla näkyy ruutuaika liikkeessä,
-  kuvataajuus ja käytössä oleva tarkkuus. Tällä näkee, miten sivu jaksaa omalla laitteella.
-- Osoiteparametrit: `?view=koko|tyvi|piilutus|latva`, `?az=…&el=…` (aurinko),
-  `?q=mobile|desktop` (laatutaso), `?pr=…` (pikselisuhteen yläraja), `?ssaa=…`, `?noao`,
-  `?nostill`, `?cam=x,y,z,tx,ty,tz`.
+## Yhteiset osat
+
+- `src/viewer.js`: renderöinti ja silmukka. three.js `WebGPURenderer` ja TSL-varjostimet; jos
+  selain ei tue WebGPU:ta tai laite antaa virheen käynnistyksessä, sama koodi ajetaan
+  WebGL 2:lla. Käytössä oleva tekniikka näkyy otsikon vieressä.
+- Liikkeessä kuva piirretään 4 × MSAA:lla ja tarkkuus mukautuu laitteen nopeuteen (tavoite yli
+  40 kuvaa sekunnissa). Kun kuva pysähtyy, se piirretään ylinäytteistettynä.
+- `src/env.js`: aurinko varjoineen, taivas ympäristökarttana, maa ja kaukainen metsänreuna.
+  Ambient occlusion himmentää vain taivaan valoa.
+- `?mittari` (tai `#mittari`): kohde pyörii itsestään ja otsikon alla näkyy ruutuaika liikkeessä,
+  kuvataajuus ja käytössä oleva tarkkuus.
+- Osoiteparametrit: `?view=…`, `?az=…&el=…` (aurinko), `?q=mobile|desktop`, `?pr=…`, `?ssaa=…`,
+  `?noao`, `?nostill`, `?webgl`, `?webgpu`, `?cam=x,y,z,tx,ty,tz`. Mökissä lisäksi `?katto=0`,
+  `?tyyppi=harja`, `?etu=…` ja `?sivu=…`.
 
 ## Referenssit
 
-Muoto ja pinta on tehty kuvien ja kuvausten pohjalta:
-
 - [Hirsimies](http://www.hirsimies.fi/): käsin piilutettu seinä sivuvalossa ja lohenpyrstönurkka.
-  Sivun mukaan käsin piilutetun pinnan ”maalut ovat epäsäännöllisiä ja jälki elävä, kirveen
-  jäljiltä pinta kiiltää”.
 - [Hirsitaito: hirsirakennuksen veistäminen](https://hirsitaito.fi/hirsirakennuksen-veistaminen/):
-  piilukirveen jälki läheltä ja pelkkahirren veisto.
+  piilukirveen jälki läheltä.
 - [Blocklayer: log dovetail](https://www.blocklayer.com/woodjoints/log-dovetail): täyden
   lohenpyrstön tasot viettävät kahteen suuntaan.
 
 ## Rajoitukset
 
-- Testaus on tehty headless-Chromiumissa ohjelmallisella WebGPU-laitteella (SwiftShader) ja
-  WebGL 2 -varatilalla. Oikealla näytönohjaimella ja Safarissa sivua ei ole vielä ajettu, joten
-  nopeus puhelimessa on mittaamatta.
-- Hirsi on tuore: kuivumishalkeamia ja harmaantumista ei ole.
-- Varauksen ja tapin tasojen pinta on yksinkertainen (ei työkalun jälkiä).
+- Testaus on tehty headless-Chromiumissa ohjelmallisella WebGPU-laitteella ja WebGL 2
+  -varatilalla. Mallihirsi on ajettu iPhonella WebGPU:lla; mökkiä ei vielä.
+- Mökki on pelkkä runko: ei lattiaa, aukkoja, väliseiniä eikä kattotuoleja. Pitkien seinien
+  jatkokset ovat suoria puskuliitoksia.
+- Mökin hirsissä kyljen aallot ovat varjostuksessa ja puun kuviossa, eivät ääriviivassa.
+- Hirret ovat tuoreita: kuivumishalkeamia ja harmaantumista ei ole.

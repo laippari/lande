@@ -5,9 +5,6 @@ import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
 import SSAAPassNode from 'three/addons/tsl/display/SSAAPassNode.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-import { createLog } from './log/log.js';
-import { L } from './log/shape.js';
-import { createEnvironment, BEARER } from './scene.js';
 import { createUI } from './ui.js';
 
 const params = new URLSearchParams(location.search);
@@ -39,15 +36,6 @@ const session = {
   },
 };
 
-// Valmiit näkymät: kameran paikka ja kohde maailman koordinaateissa sekä auringon suunta
-// (atsimuutti hirren suunnasta, korkeus). tall on pystynäytön kamera.
-const VIEWS = {
-  koko: { name: 'Koko hirsi', pos: [-1.9, 1.55, 4.3], target: [2.45, 0.28, 0], tall: { pos: [-2.0, 1.25, 1.55], target: [2.3, 0.26, 0] }, sun: [152, 27], fit: true },
-  tyvi: { name: 'Tyvipää', pos: [-0.95, 0.62, 1.0], target: [0.2, 0.3, 0], sun: [152, 27] },
-  piilutus: { name: 'Piilutus', pos: [0.75, 0.47, 0.62], target: [2.2, 0.32, 0.1], sun: [171, 16] },
-  latva: { name: 'Latvapää', pos: [5.85, 0.66, 0.95], target: [4.85, 0.3, 0], sun: [28, 27] },
-};
-
 // SSAA-kierros, joka käyttää samaa varjostusyhteyttä (AO) kuin tavallinen kierros.
 class StillPassNode extends SSAAPassNode {
   updateBefore(frame) {
@@ -61,7 +49,13 @@ class StillPassNode extends SSAAPassNode {
 
 const ease = (t) => t * t * (3 - 2 * t);
 
-async function main() {
+// Käynnistää katselun. Sivu antaa näkymät ja build-funktion, joka rakentaa sisällön ja ympäristön:
+//
+//   views: { avain: { name, pos, target, sun: [atsimuutti, korkeus], fit?, tall? } }
+//   build({ renderer, scene, Q, params, num }) → { env, fitCorners, focusTargets, info }
+//
+// Palauttaa kahvan, jolla sivu voi pyytää uuden kuvan (invalidate), kun sisältö muuttuu.
+export async function startViewer({ views: VIEWS, defaultView, build, maxDistance = 16, aoRadius = 0.3, sunDefault = [152, 27] }) {
   const container = document.getElementById('viewer');
   const coarse = matchMedia('(pointer: coarse)').matches;
   const quality = params.get('q') || (coarse ? 'mobile' : 'desktop');
@@ -108,34 +102,23 @@ async function main() {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(num('fov', 32), 1, 0.03, 600);
 
-  // --- hirsi aluspuiden päällä ---
   const t0 = performance.now();
-  const log = createLog({ detail: num('detail', 1) });
+  const content = await build({ renderer, scene, quality, Q, params, num });
   const buildMs = performance.now() - t0;
-  const holder = new THREE.Group();
-  holder.add(log.mesh);
-  const [xa, xb] = BEARER.at;
-  const ya = log.lipHeight(xa);
-  const yb = log.lipHeight(xb);
-  holder.rotation.z = -Math.atan2(yb - ya, xb - xa); // huulet vaakasuoraan aluspuiden päälle
-  holder.position.y = BEARER.size - (ya * Math.cos(holder.rotation.z) + xa * Math.sin(holder.rotation.z));
-  scene.add(holder);
-
-  const env = createEnvironment(renderer, scene, { shadowSize: Q.shadow });
+  const env = content.env;
 
   // --- kamera ja ohjaus ---
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.minDistance = 0.14;
-  controls.maxDistance = 16;
+  controls.maxDistance = maxDistance;
   controls.maxPolarAngle = Math.PI * 0.497;
   controls.zoomToCursor = true;
 
-  // Näkymän kamera tälle kuvasuhteelle. Koko hirren näkymässä kamera vetäytyy niin kauas,
-  // että hirsi mahtuu kuvaan reunoineen.
-  const corners = [];
-  for (const x of [-0.05, L + 0.05]) for (const y of [0.1, 0.52]) for (const z of [-0.12, 0.12]) corners.push(new THREE.Vector3(x, y, z));
+  // Näkymän kamera tälle kuvasuhteelle. Kokonaisnäkymässä (fit) kamera vetäytyy niin kauas,
+  // että kohde mahtuu kuvaan reunoineen.
+  const corners = content.fitCorners;
   const poseFor = (view) => {
     const tall = camera.aspect < 0.8 && view.tall;
     const src = tall ? view.tall : view;
@@ -150,7 +133,7 @@ async function main() {
       const tanH = tanV * camera.aspect;
       const margin = tall ? 0.8 : 0.86;
       let d = 1.5;
-      for (; d < 30; d += 0.1) {
+      for (; d < 90; d += 0.1) {
         probe.position.copy(target).addScaledVector(dir, d);
         probe.lookAt(target);
         probe.updateMatrixWorld();
@@ -230,7 +213,7 @@ async function main() {
 
   const aoPass = ao(preDepth, preNormal, camera);
   aoPass.resolutionScale = Q.aoScale;
-  aoPass.radius.value = num('aor', 0.3);
+  aoPass.radius.value = num('aor', aoRadius);
   aoPass.samples.value = 16;
   aoPass.scale.value = 1.0;
   aoPass.thickness.value = 1.2;
@@ -287,13 +270,13 @@ async function main() {
     camera.position.fromArray(c.slice(0, 3));
     controls.target.fromArray(c.slice(3, 6));
     controls.update();
-    applySun(num('az', 152), num('el', 27), true);
+    applySun(num('az', sunDefault[0]), num('el', sunDefault[1]), true);
   } else {
-    goTo(VIEWS[params.get('view')] ? params.get('view') : 'koko', { instant: true });
+    goTo(VIEWS[params.get('view')] ? params.get('view') : defaultView, { instant: true });
     if (params.has('az') || params.has('el')) applySun(num('az', env.state.azimuth), num('el', env.state.elevation), true);
   }
 
-  // Kaksoisnapautus tarkentaa osoitettuun kohtaan hirressä.
+  // Kaksoisnapautus tarkentaa osoitettuun kohtaan.
   const raycaster = new THREE.Raycaster();
   let lastTap = 0;
   let tapAt = null;
@@ -301,7 +284,7 @@ async function main() {
     const r = renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
     raycaster.setFromCamera(ndc, camera);
-    const hit = raycaster.intersectObject(log.mesh, false)[0];
+    const hit = raycaster.intersectObjects(content.focusTargets(), false)[0];
     if (!hit) return;
     const dist = Math.max(0.4, camera.position.distanceTo(hit.point) * 0.42);
     const dir = camera.position.clone().sub(hit.point).normalize();
@@ -341,23 +324,30 @@ async function main() {
 
   // Liikkeessä tarkkuus mukautuu laitteen nopeuteen; pysähtyessä piirretään täysi kuva.
   let motionRatio = Math.min(maxPixelRatio, Q.motionPixelRatio);
+  let ceiling = maxPixelRatio;
+  let sinceRaise = 1000;
   let slow = 0;
   let fast = 0;
   const adapt = (dt) => {
-    if (dt > 0.042) {
+    // tavoite on yli 40 kuvaa sekunnissa
+    if (dt > 0.025) {
       slow++;
       fast = 0;
-    } else if (dt < 0.02) {
+    } else if (dt < 0.019) {
       fast++;
       slow = Math.max(0, slow - 1);
     }
-    if (slow > 5 && motionRatio > 1) {
+    if (slow > 4 && motionRatio > 1) {
+      // jos tarkkuus jouduttiin laskemaan pian noston jälkeen, sitä ei enää nosteta yhtä ylös
+      if (sinceRaise < 240) ceiling = Math.max(1, motionRatio - 0.25);
       motionRatio = Math.max(1, motionRatio - 0.25);
       slow = 0;
-    } else if (fast > 90 && motionRatio < maxPixelRatio) {
-      motionRatio = Math.min(maxPixelRatio, motionRatio + 0.25);
+    } else if (fast > 150 && motionRatio < ceiling) {
+      motionRatio = Math.min(ceiling, motionRatio + 0.25);
       fast = 0;
+      sinceRaise = 0;
     }
+    sinceRaise++;
   };
   const setRatio = (r) => {
     if (pixelRatio === r) return;
@@ -385,7 +375,7 @@ async function main() {
   };
 
   const ready = () => {
-    window.__info = { backend, quality, buildMs: Math.round(buildMs), ...log.stats };
+    window.__info = { backend, quality, buildMs: Math.round(buildMs), ...content.info() };
     window.__ready = true;
     document.body.classList.add('ready');
   };
@@ -452,7 +442,22 @@ async function main() {
     }
   });
 
-  window.__viewer = { views: VIEWS, goTo, env, scene, camera, controls, renderer, isMoving: () => move !== null };
+  const handle = {
+    views: VIEWS,
+    goTo,
+    env,
+    scene,
+    camera,
+    controls,
+    renderer,
+    content,
+    backend,
+    isMoving: () => move !== null,
+    invalidate: () => {
+      dirty = true;
+    },
+  };
+  window.__viewer = handle;
 
   // Testikaappaus: kuva luetaan renderöintikohteesta (headless-selain ei näytä WebGPU-kanvaasia).
   window.__capture = async ({ still = false } = {}) => {
@@ -477,9 +482,11 @@ async function main() {
     c.getContext('2d').putImageData(img, 0, 0);
     return c.toDataURL('image/png');
   };
+
+  return handle;
 }
 
-main().catch((e) => {
+export function showError(e) {
   window.__error = String(e && e.stack ? e.stack : e);
   console.error(e);
   const box = document.getElementById('error');
@@ -488,4 +495,4 @@ main().catch((e) => {
     box.textContent = 'Renderöinti ei käynnistynyt: ' + (e && e.message ? e.message : e);
   }
   document.body.classList.add('ready');
-});
+}
