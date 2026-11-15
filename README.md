@@ -85,6 +85,10 @@ Sivu on staattinen, joten käännösvaihetta ei ole. three.js ladataan jsDelivr-
 - three.js `WebGPURenderer` ja TSL-varjostimet. Jos selain ei tue WebGPU:ta, sama koodi
   ajetaan WebGL 2:lla (`?webgl` pakottaa sen). Käytössä oleva tekniikka näkyy otsikon vieressä.
 - Hirren verkossa on noin 207 000 kolmiota, ja se rakennetaan selaimessa noin 0,3 sekunnissa.
+- Jos WebGPU antaa laitteella virheen käynnistyksen aikana, sivu latautuu itsestään uudelleen
+  WebGL 2 -varatilaan. `?webgpu` kokeilee WebGPU:ta uudelleen.
+- `?mittari` (tai `#mittari`): hirsi pyörii itsestään ja otsikon alla näkyy ruutuaika liikkeessä,
+  kuvataajuus ja käytössä oleva tarkkuus. Tällä näkee, miten sivu jaksaa omalla laitteella.
 - Osoiteparametrit: `?view=koko|tyvi|piilutus|latva`, `?az=…&el=…` (aurinko),
   `?q=mobile|desktop` (laatutaso), `?pr=…` (pikselisuhteen yläraja), `?ssaa=…`, `?noao`,
   `?nostill`, `?cam=x,y,z,tx,ty,tz`.

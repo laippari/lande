@@ -13,6 +13,32 @@ import { createUI } from './ui.js';
 const params = new URLSearchParams(location.search);
 const num = (key, fallback) => (params.has(key) ? Number(params.get(key)) : fallback);
 
+// Selaimen istuntomuisti voi olla estetty, joten sitä käytetään varoen.
+const session = {
+  get(key) {
+    try {
+      return sessionStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  set(key, value) {
+    try {
+      sessionStorage.setItem(key, value);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  remove(key) {
+    try {
+      sessionStorage.removeItem(key);
+    } catch {
+      // ei muistia, ei poistettavaa
+    }
+  },
+};
+
 // Valmiit näkymät: kameran paikka ja kohde maailman koordinaateissa sekä auringon suunta
 // (atsimuutti hirren suunnasta, korkeus). tall on pystynäytön kamera.
 const VIEWS = {
@@ -43,7 +69,13 @@ async function main() {
     ? { shadow: 2048, stillLevel: 2, maxPixelRatio: 2, motionPixelRatio: 1.5, aoScale: 0.5 }
     : { shadow: 4096, stillLevel: 3, maxPixelRatio: 2, motionPixelRatio: 2, aoScale: 1 };
 
-  const renderer = new THREE.WebGPURenderer({ antialias: false, forceWebGL: params.has('webgl'), powerPreference: 'high-performance' });
+  // Jos WebGPU antoi tällä laitteella virheen, sivu on ladattu uudelleen WebGL 2 -varatilaan
+  // (ks. alla). ?webgpu kokeilee WebGPU:ta uudelleen.
+  if (params.has('webgpu')) session.remove('lande-fallback');
+  const fallbackReason = session.get('lande-fallback');
+  const forceWebGL = params.has('webgl') || fallbackReason !== null;
+
+  const renderer = new THREE.WebGPURenderer({ antialias: false, forceWebGL, powerPreference: 'high-performance' });
   renderer.toneMapping = { agx: THREE.AgXToneMapping, aces: THREE.ACESFilmicToneMapping, neutral: THREE.NeutralToneMapping }[params.get('tm') || 'neutral'];
   const baseExposure = num('exp', 0.5);
   renderer.shadowMap.enabled = true;
@@ -52,6 +84,26 @@ async function main() {
   await renderer.init();
   const backend = renderer.backend.isWebGPUBackend ? 'WebGPU' : 'WebGL 2';
   document.documentElement.dataset.backend = backend;
+
+  // WebGPU-toteutukset eroavat selaimittain. Jos laite hylkää jotain käynnistyksen aikana,
+  // sivu ladataan uudelleen WebGL 2 -varatilaan, jossa sama koodi toimii.
+  if (renderer.backend.isWebGPUBackend && !params.has('offscreen')) {
+    const device = renderer.backend.device;
+    const started = performance.now();
+    const fallBack = (reason) => {
+      if (performance.now() - started > 20000) return;
+      if (session.set('lande-fallback', String(reason || 'tuntematon virhe').slice(0, 240))) location.reload();
+    };
+    device.addEventListener('uncapturederror', (e) => fallBack(e.error && e.error.message));
+    device.lost.then((info) => {
+      if (info.reason !== 'destroyed') fallBack(`laite katosi: ${info.message}`);
+    });
+    // jotkin selaimet ilmoittavat kadonneesta laitteesta vain hylättyinä lupauksina
+    addEventListener('unhandledrejection', (e) => {
+      const text = String((e.reason && e.reason.message) || e.reason);
+      if (/GPU|popErrorScope|Instance dropped|device/i.test(text)) fallBack(text);
+    });
+  }
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(num('fov', 32), 1, 0.03, 600);
@@ -313,6 +365,25 @@ async function main() {
     resize();
   };
 
+  // ?mittari (tai #mittari): hirsi pyörii itsestään ja otsikon alla näkyy ruutuaika liikkeessä.
+  const meterOn = params.has('mittari') || location.hash === '#mittari';
+  const meter = document.getElementById('meter');
+  let meterMs = 0;
+  let meterAt = 0;
+  if (meterOn) {
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 1.2;
+  }
+  const showMeter = (dt, now) => {
+    meterMs = meterMs ? meterMs * 0.92 + dt * 80 : dt * 1000;
+    if (now - meterAt < 300) return;
+    meterAt = now;
+    meter.hidden = false;
+    const rate = 1000 / meterMs;
+    meter.textContent = `${meterMs.toFixed(1)} ms · ${rate < 10 ? rate.toFixed(1) : Math.round(rate)} kuvaa/s · tarkkuus ${pixelRatio}×`
+      + (fallbackReason ? ` · varatila: ${fallbackReason}` : '');
+  };
+
   const ready = () => {
     window.__info = { backend, quality, buildMs: Math.round(buildMs), ...log.stats };
     window.__ready = true;
@@ -322,9 +393,11 @@ async function main() {
   const offscreen = params.has('offscreen');
   let last = performance.now();
   let frames = 0;
+  let streak = 0;
   renderer.setAnimationLoop(() => {
     const now = performance.now();
-    const dt = Math.min(0.1, (now - last) / 1000);
+    const elapsed = (now - last) / 1000;
+    const dt = Math.min(0.1, elapsed);
     last = now;
 
     if (move) {
@@ -357,19 +430,25 @@ async function main() {
       return;
     }
     if (dirty) {
-      const wasMoving = now - lastMotion < 120;
+      // peräkkäiset liikeruudut: edellisen ruudun kesto kertoo laitteen nopeuden
+      if (streak++ > 0) {
+        adapt(dt);
+        if (meterOn) showMeter(elapsed, now);
+      }
       setRatio(motionRatio);
       fastPipeline.render();
       dirty = false;
       stillDone = false;
       lastMotion = now;
-      if (wasMoving) adapt(dt);
       if (++frames === 1) ready();
-    } else if (!stillDone && now - lastMotion > 280 && !params.has('nostill')) {
-      setRatio(maxPixelRatio);
-      dirty = false;
-      stillPipeline.render();
-      stillDone = true;
+    } else {
+      streak = 0;
+      if (!stillDone && now - lastMotion > 280 && !params.has('nostill')) {
+        setRatio(maxPixelRatio);
+        dirty = false;
+        stillPipeline.render();
+        stillDone = true;
+      }
     }
   });
 

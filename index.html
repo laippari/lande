@@ -70,6 +70,8 @@
     body.ready #title { opacity: 1; transform: none; }
     #title h1 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -0.01em; }
     #title p { margin: 1px 0 0; font-size: 12px; color: var(--muted); }
+    #title #meter { margin-top: 4px; color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+    #title #meter[hidden] { display: none; }
 
     #badge {
       display: inline-block; vertical-align: 2px; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
@@ -152,6 +154,7 @@
   <header id="title" class="glass">
     <h1>Piiluhirsi<span id="badge"></span></h1>
     <p>Mänty · 5,0 m · 20 × 30–35 cm · lohenpyrstöpäät</p>
+    <p id="meter" hidden></p>
   </header>
 
   <div id="dock">
