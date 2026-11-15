@@ -123,42 +123,68 @@ export function createFoliageAtlas() {
   const rnd = mulberry32(4711);
   ctx.lineCap = 'round';
 
-  // 0: männyn neulaskimput. Versot ovat pullonharjan kaltaisia: lyhyt oksa, jonka ympärillä neulaset
-  // osoittavat kärkeä kohti. Versot kasautuvat ryhmiksi, joten tupsun ääriviiva on epäsäännöllinen.
+  // 0: männyn oksa ylhäältä: runko on kuvan vasemmassa reunassa ja oksa kasvaa oikealle.
+  // Sivuoksat haarovat vuorotellen kummallekin puolelle, ja niiden kärkiosissa on pullonharjan
+  // kaltaisia neulasversoja; tyvipuoli on paljasta oksaa.
   tile(ctx, 0, 0, S, (s) => {
-    const green = [[38, 60, 36], [50, 76, 42], [62, 90, 48], [32, 52, 32], [76, 104, 56]];
-    const groups = [];
-    for (let i = 0; i < 11; i++) {
-      const a = rnd() * Math.PI * 2, r = Math.pow(rnd(), 0.7) * s * 0.3;
-      groups.push([s / 2 + Math.cos(a) * r, s / 2 + Math.sin(a) * r, s * (0.09 + rnd() * 0.08)]);
-    }
-    for (let i = 0; i < 330; i++) {
-      const g = groups[Math.floor(rnd() * groups.length)];
-      const a = rnd() * Math.PI * 2, r = Math.pow(rnd(), 0.6) * g[2];
-      const x = g[0] + Math.cos(a) * r, y = g[1] + Math.sin(a) * r;
-      const dir = Math.atan2(y - s / 2, x - s / 2) + (rnd() - 0.5) * 1.8;
+    const green = [[40, 62, 38], [52, 78, 44], [64, 92, 50], [34, 54, 34], [78, 106, 58]];
+    const twig = (x0, y0, x1, y1, w) => {
+      ctx.strokeStyle = rgb(78, 56, 40);
+      ctx.lineWidth = w;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+    };
+    const shoot = (x, y, dir, len) => {
       const col = green[Math.floor(rnd() * green.length)];
       const k = 0.78 + rnd() * 0.5;
-      const len = s * (0.035 + rnd() * 0.03), nl = s * (0.02 + rnd() * 0.008);
-      ctx.strokeStyle = rgb(74, 54, 36);
-      ctx.lineWidth = s * 0.004;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + Math.cos(dir) * len, y + Math.sin(dir) * len);
-      ctx.stroke();
-      ctx.lineWidth = s * 0.0034;
-      const n = 13;
-      for (let j = 0; j < n; j++) {
-        const t = j / (n - 1), bx = x + Math.cos(dir) * len * t, by = y + Math.sin(dir) * len * t;
-        ctx.strokeStyle = shade(col, k * (0.85 + 0.3 * t));
+      const nl = s * (0.026 + rnd() * 0.012);
+      twig(x, y, x + Math.cos(dir) * len, y + Math.sin(dir) * len, s * 0.005);
+      ctx.lineWidth = s * 0.0042;
+      const n = 12;
+      for (let j = 0; j <= n; j++) {
+        const t = j / n, bx = x + Math.cos(dir) * len * t, by = y + Math.sin(dir) * len * t;
+        ctx.strokeStyle = shade(col, k * (0.82 + 0.34 * t));
         for (const sd of [-1, 1]) {
-          const b = dir + sd * (0.55 + rnd() * 0.5);
+          const b = dir + sd * (0.45 + rnd() * 0.55);
           ctx.beginPath();
           ctx.moveTo(bx, by);
           ctx.lineTo(bx + Math.cos(b) * nl, by + Math.sin(b) * nl);
           ctx.stroke();
         }
       }
+      // kärjen neulaskimppu
+      ctx.strokeStyle = shade(col, k * 1.2);
+      for (let j = 0; j < 7; j++) {
+        const b = dir + (rnd() - 0.5) * 1.5, ex = x + Math.cos(dir) * len, ey = y + Math.sin(dir) * len;
+        ctx.beginPath();
+        ctx.moveTo(ex, ey);
+        ctx.lineTo(ex + Math.cos(b) * nl, ey + Math.sin(b) * nl);
+        ctx.stroke();
+      }
+    };
+    // haara: piirtää oksan ja jatkaa pienemmillä sivuhaaroilla; kärkiosiin tulee neulasversoja
+    const branch = (x, y, dir, len, depth) => {
+      const ex = x + Math.cos(dir) * len, ey = y + Math.sin(dir) * len;
+      twig(x, y, ex, ey, s * (0.004 + 0.004 * depth));
+      const n = depth > 0 ? 4 + Math.floor(rnd() * 3) : 3;
+      for (let i = 0; i < n; i++) {
+        const t = 0.3 + (0.7 * (i + rnd() * 0.6)) / n, sd = i % 2 ? 1 : -1;
+        const bx = x + Math.cos(dir) * len * t, by = y + Math.sin(dir) * len * t;
+        const a = dir + sd * (0.45 + rnd() * 0.5);
+        if (depth > 0) branch(bx, by, a, len * (0.42 + rnd() * 0.2) * (1 - t * 0.35), depth - 1);
+        else shoot(bx, by, a, s * (0.05 + rnd() * 0.035));
+      }
+      shoot(ex, ey, dir + (rnd() - 0.5) * 0.4, s * (0.06 + rnd() * 0.03));
+    };
+    branch(s * 0.03, s * 0.5, (rnd() - 0.5) * 0.1, s * 0.6, 2);
+    // lisää versoja ulkokehälle, jotta neulasto on tiheä ja oksan kärkiosa täyteläinen
+    for (let i = 0; i < 150; i++) {
+      const a = (rnd() - 0.5) * 1.5, r = s * (0.3 + Math.pow(rnd(), 0.7) * 0.58);
+      const x = s * 0.03 + Math.cos(a) * r, y = s * 0.5 + Math.sin(a) * r * 0.82;
+      if (x > s * 0.93 || y < s * 0.06 || y > s * 0.94) continue;
+      shoot(x, y, a + (rnd() - 0.5) * 1.3, s * (0.045 + rnd() * 0.035));
     }
   });
 

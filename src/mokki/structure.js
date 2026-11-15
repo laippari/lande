@@ -1,60 +1,62 @@
-// Rossipohja, pilariperustus ja ikkunat.
+// Perustus, lattia ja ikkunat.
 //
-// Rossipohja on tuulettuva puurakenteinen alapohja: mökki seisoo pilarien päällä, ja lattian alla
-// on avoin ryömintätila. Rakenne alhaalta ylös (mitat tyypillisiä, ks. README):
-//   - betoniharkkopilarit 300 × 300 mm, harkkokerros 200 mm, anturat maassa
-//   - bitumikaista pilarin ja puun välissä
-//   - perustuspalkit pilarilinjoilla (seinien alla ja keskellä), yläpinta y = 0
-//   - lattiapalkit palkkien päällä 600 mm välein, välissä eriste, alla tuulensuojalevy
-//   - lattialaudat 28 mm, pinta y = DIM.floor
-// Alin hirsi lepää perustuspalkin päällä, ja lattian pinta on ensimmäisen hirsikerran yläreunan
-// tasolla. Lattiapalkit ja eriste jäävät laudoituksen ja tuulensuojalevyn väliin piiloon.
+// Mökki seisoo valetun betonisokkelin päällä: yhtenäinen kehä seinien alla, näkyvissä noin 35 cm.
+// Sokkelin sisällä on tuulettuva ryömintätila (rossipohja), jota tuuletetaan sokkelin luukuista.
+// Lattiapalkit, eriste ja tuulensuojalevy jäävät lattialautojen ja sokkelin taakse piiloon;
+// lattian pinta on 33 cm sokkelin yläpinnasta eli ensimmäisen hirsikerran yläreunan tasolla.
+// Sokkelin ympärillä on puolen metrin kaista tummaa soraa (maaston varjostimessa), ja maa on
+// muotoiltu mökin kohdalta tasaiseksi (ks. tontti/terrain.js).
+//
+// Terassi seisoo matalilla betoniharkoilla.
 
 import * as THREE from 'three/webgpu';
 import { float, vec3, positionLocal, fract, smoothstep, mix, abs } from 'three/tsl';
+import { noise3 } from '../noise.js';
 import { DIM, WINDOWS } from './plan.js';
 
 const HW = DIM.wall / 2;
-export const BEAM = { width: 0.18, depth: 0.315 };
-export const PILLAR = { size: 0.3, course: 0.2, footing: 0.6, clearance: 0.5 };
+export const PLINTH = { height: 0.34, thickness: 0.24, inset: 0.02, depth: 1.0 };
 const PINE = [1, 1, 1];
-const FIBRE = [0.42, 0.36, 0.29]; // tuulensuojalevy: ruskea puukuitulevy
 
-// Pilarien paikat mökin koordinaatistossa: jokaisen nurkan alla, seinälinjoilla ja keskilinjalla
-// noin 2,3 m välein.
-export function pillarSpots() {
-  const spots = [];
-  const xs = [];
-  const n = 5;
-  for (let i = 0; i <= n; i++) xs.push(-DIM.width / 2 + HW + ((DIM.width - DIM.wall) * i) / n);
-  const zLines = [-DIM.depth / 2 + HW, 0, DIM.depth / 2 - HW];
-  for (const z of zLines) for (const x of xs) spots.push([x, z]);
-  for (const x of [xs[0], xs[n]]) for (const z of [-DIM.depth / 4, DIM.depth / 4]) spots.push([x, z]);
-  return spots;
-}
-
-// Lattia ja perustuspalkit puuosien verkkoon.
+// Lattialaudat pitkien seinien suuntaan.
 export function addFloor(timber) {
   const x0 = -DIM.width / 2 + DIM.wall, x1 = DIM.width / 2 - DIM.wall;
   const z0 = -DIM.depth / 2 + DIM.wall, z1 = DIM.depth / 2 - DIM.wall;
-  // lattialaudat pitkien seinien suuntaan
   const bw = 0.12, n = Math.round((z1 - z0) / bw);
   const w = (z1 - z0) / n;
   for (let i = 0; i < n; i++) {
     const z = z0 + (i + 0.5) * w;
     timber.addBoard({ a: [x0, DIM.floor - 0.014, z], b: [x1, DIM.floor - 0.014, z], w: w - 0.002, t: 0.028, tint: PINE, ends: false });
   }
-  // tuulensuojalevy lattiapalkkien alla
-  timber.addBoard({ a: [x0, 0.011, 0], b: [x1, 0.011, 0], w: z1 - z0, t: 0.022, tint: FIBRE, ends: false });
-  // perustuspalkit: pitkien seinien alla ja keskellä sekä päätyseinien alla
-  const by = -BEAM.depth / 2;
-  const bx0 = -DIM.width / 2 + 0.01, bx1 = DIM.width / 2 - 0.01;
-  for (const z of [-DIM.depth / 2 + HW, 0, DIM.depth / 2 - HW]) {
-    timber.addBoard({ a: [bx0, by, z], b: [bx1, by, z], w: BEAM.width, t: BEAM.depth });
-  }
-  for (const x of [-DIM.width / 2 + HW, DIM.width / 2 - HW]) {
-    timber.addBoard({ a: [x, by, -DIM.depth / 2 + HW + BEAM.width / 2], b: [x, by, DIM.depth / 2 - HW - BEAM.width / 2], w: BEAM.width, t: BEAM.depth });
-  }
+}
+
+// Valettu sokkeli: kehä seinien alla, yläpinta y = 0, ja tuuletusluukut kyljissä.
+export function plinthGeometry() {
+  const parts = [];
+  const X = DIM.width / 2 - PLINTH.inset, Z = DIM.depth / 2 - PLINTH.inset, t = PLINTH.thickness, h = PLINTH.depth;
+  const box = (w, d, x, z) => {
+    const g = new THREE.BoxGeometry(w, h, d);
+    g.translate(x, -h / 2, z);
+    parts.push(g);
+  };
+  box(2 * X, t, 0, Z - t / 2);
+  box(2 * X, t, 0, -Z + t / 2);
+  box(t, 2 * Z - 2 * t, X - t / 2, 0);
+  box(t, 2 * Z - 2 * t, -X + t / 2, 0);
+  return mergeBoxes(parts);
+}
+
+export function ventGeometry() {
+  const parts = [];
+  const X = DIM.width / 2 - PLINTH.inset, Z = DIM.depth / 2 - PLINTH.inset;
+  const vent = (x, z, alongX) => {
+    const g = new THREE.BoxGeometry(alongX ? 0.3 : 0.012, 0.1, alongX ? 0.012 : 0.3);
+    g.translate(x, -0.15, z);
+    parts.push(g);
+  };
+  for (const x of [-4, 0, 4]) for (const z of [-Z, Z]) vent(x, z, true);
+  for (const z of [-2, 2]) for (const x of [-X, X]) vent(x, z, false);
+  return mergeBoxes(parts);
 }
 
 // Ikkunat: mäntykarmi aukon ympärillä, välikarmi parin keskellä, lasi ja ulkopuolen vuorilaudat.
@@ -103,33 +105,39 @@ export function createGlassMaterial() {
   });
 }
 
-// Betoni: harkkopilarin saumat 200 mm välein.
-export function createConcreteMaterial() {
+// Betoni. Harkoissa saumat 200 mm välein; valetussa sokkelissa näkyvät muottilautojen jäljet.
+// Sävy on tumma, jotta perustus ei erotu metsänpohjasta.
+export function createConcreteMaterial({ cast = false } = {}) {
   const m = new THREE.MeshStandardNodeMaterial({ roughness: 0.92, metalness: 0 });
-  const joint = smoothstep(0.0, 0.012, abs(fract(positionLocal.y.div(PILLAR.course)).sub(0.5)).mul(PILLAR.course));
-  m.colorNode = mix(vec3(0.13, 0.13, 0.125), vec3(0.3, 0.295, 0.285), joint);
+  if (cast) {
+    const board = abs(fract(positionLocal.y.div(0.11)).sub(0.5)).mul(0.11);
+    const line = smoothstep(0.0, 0.006, board);
+    const n = noise3(positionLocal.mul(vec3(2.3, 9, 2.3)));
+    const fine = noise3(positionLocal.mul(47));
+    m.colorNode = mix(vec3(0.085, 0.085, 0.082), vec3(0.165, 0.163, 0.155), line).mul(n.x.mul(0.12).add(1)).mul(fine.x.mul(0.1).add(1));
+  } else {
+    const joint = smoothstep(0.0, 0.012, abs(fract(positionLocal.y.div(BLOCK.course)).sub(0.5)).mul(BLOCK.course));
+    m.colorNode = mix(vec3(0.05, 0.05, 0.048), vec3(0.115, 0.113, 0.108), joint);
+  }
   m.roughnessNode = float(0.92);
   return m;
 }
 
-// Pilarit ja anturat. list: [{ x, z, top, size }] mökin koordinaatistossa (top = pilarin yläpinta),
-// groundAt(x, z): maanpinnan korkeus samassa koordinaatistossa. Rinteessä alarinteen pilarit
-// ovat pidempiä.
+export const BLOCK = { course: 0.2 };
+
+// Harkkopilarit. list: [{ x, z, top, size }] mökin koordinaatistossa (top = pilarin yläpinta),
+// groundAt(x, z): maanpinnan korkeus samassa koordinaatistossa. Antura jää maan alle.
 export function pillarGeometry(list, groundAt) {
   const parts = [];
   for (const { x, z, top, size } of list) {
     const h = size / 2;
     const g = Math.min(groundAt(x - h, z - h), groundAt(x + h, z - h), groundAt(x - h, z + h), groundAt(x + h, z + h), groundAt(x, z));
-    const bottom = g - 0.25;
+    const bottom = g - 0.3;
     const height = Math.max(top - bottom, 0.05);
     const box = new THREE.BoxGeometry(size, height, size);
     box.translate(x, bottom + height / 2, z);
     parts.push(box);
-    // antura näkyy rinteessä alarinteen puolelta
-    const pad = new THREE.BoxGeometry(size * 2, 0.2, size * 2);
-    pad.translate(x, g - 0.07, z);
-    parts.push(pad);
-    // bitumikaista pilarin päällä
+    // bitumikaista harkon päällä
     const strip = new THREE.BoxGeometry(size + 0.004, 0.006, size + 0.004);
     strip.translate(x, top + 0.003, z);
     parts.push(strip);

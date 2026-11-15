@@ -55,7 +55,7 @@ const ease = (t) => t * t * (3 - 2 * t);
 //   build({ renderer, scene, Q, params, num }) → { env, fitCorners, focusTargets, info }
 //
 // Palauttaa kahvan, jolla sivu voi pyytää uuden kuvan (invalidate), kun sisältö muuttuu.
-export async function startViewer({ views: VIEWS, defaultView, build, maxDistance = 16, aoRadius = 0.3, sunDefault = [152, 27], far = 600 }) {
+export async function startViewer({ views: VIEWS, defaultView, build, maxDistance = 16, aoRadius = 0.3, sunDefault = [152, 27], far = 600, portraitFov = null, maxPolar = 0.497 }) {
   const container = document.getElementById('viewer');
   const coarse = matchMedia('(pointer: coarse)').matches;
   const quality = params.get('q') || (coarse ? 'mobile' : 'desktop');
@@ -114,7 +114,7 @@ export async function startViewer({ views: VIEWS, defaultView, build, maxDistanc
   controls.dampingFactor = 0.08;
   controls.minDistance = 0.14;
   controls.maxDistance = maxDistance;
-  controls.maxPolarAngle = Math.PI * 0.497;
+  controls.maxPolarAngle = Math.PI * maxPolar; // maastossa kamera saa katsoa myös ylöspäin
   controls.zoomToCursor = true;
 
   // Näkymän kamera tälle kuvasuhteelle. Kokonaisnäkymässä (fit) kamera vetäytyy niin kauas,
@@ -134,7 +134,7 @@ export async function startViewer({ views: VIEWS, defaultView, build, maxDistanc
       const probe = camera.clone();
       const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
       const tanH = tanV * camera.aspect;
-      const margin = tall ? 0.8 : 0.86;
+      const margin = tall ? (view.tall.margin || 0.8) : 0.86;
       let d = 1.5;
       for (; d < 90; d += 0.1) {
         probe.position.copy(target).addScaledVector(dir, d);
@@ -254,6 +254,8 @@ export async function startViewer({ views: VIEWS, defaultView, build, maxDistanc
     renderer.setPixelRatio(pixelRatio);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
+    // pystynäytöllä laajempi kuvakulma, jotta leveä kohde mahtuu kuvaan lähempää
+    if (portraitFov && !params.has('fov')) camera.fov = camera.aspect < 0.8 ? portraitFov : 32;
     camera.updateProjectionMatrix();
     dirty = true;
   };

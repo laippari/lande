@@ -1,8 +1,9 @@
 // Hirsimökki rinnetontilla järven rannassa.
 //
-// Mökki: 12 × 8 m, sisäkorkeus 3 m, lohenpyrstönurkat, rossipohja betoniharkkopilareilla, neljä
-// ikkunaa järvelle, terassi, pergola ja palju. Tontti: loiva harjurinne, mäntykangas, hiekkaranta.
-// Mökkiä voi siirtää ja kääntää tontilla; puut, kivet ja varvut väistyvät sen alta.
+// Mökki: 12 × 8 m, sisäkorkeus 3 m, lohenpyrstönurkat, valettu sokkeli, neljä ikkunaa järvelle,
+// terassi, lasitettu pergola ja palju. Tontti: loiva mäntykangasrinne, jossa metsä ulottuu
+// vesirajaan. Mökkiä voi siirtää ja kääntää tontilla: maa muotoutuu sen alle, ja puut, kivet ja
+// varvut väistyvät.
 
 import * as THREE from 'three/webgpu';
 import { startViewer, showError } from './viewer.js';
@@ -11,16 +12,16 @@ import { planCabin, DIM } from './mokki/plan.js';
 import { Timber } from './mokki/mesh.js';
 import { createCabinWoodMaterial } from './mokki/wood.js';
 import { createRoof, ROOF_LIMITS } from './mokki/roof.js';
-import { BEAM, PILLAR, pillarSpots, addFloor, addWindows, glassGeometry, createGlassMaterial, createConcreteMaterial, pillarGeometry } from './mokki/structure.js';
+import { PLINTH, addFloor, addWindows, glassGeometry, createGlassMaterial, createConcreteMaterial, pillarGeometry, plinthGeometry, ventGeometry } from './mokki/structure.js';
 import { TERRACE, buildTerrace, buildGroundworks, footprintBoxes } from './mokki/terrace.js';
-import { SITE, heightAt, inland, shoreZ, coverAt, sandAt, footprint, footprintDistanceJS, bakeCover, createTerrain } from './tontti/terrain.js';
+import { SITE, heightAt, naturalHeight, setPad, inland, shoreZ, coverAt, sandAt, footprint, footprintDistanceJS, bakeCover, createTerrain } from './tontti/terrain.js';
 import { createForest } from './tontti/forest.js';
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
 const clamp = (v, [a, b]) => Math.min(Math.max(v, a), b);
 const number = (key, fallback) => (params.has(key) && Number.isFinite(Number(params.get(key))) ? Number(params.get(key)) : fallback);
-const HOME = { x: 3, z: 1, yaw: 0 };
+const HOME = { x: 3, z: -8, yaw: 0 };
 
 const state = {
   roofOn: params.get('katto') !== '0',
@@ -33,7 +34,6 @@ const state = {
     side: params.get('paa') === 'oikea' ? 'right' : 'left',
     tub: { spa: 'spa', ei: 'none' }[params.get('allas')] || 'palju',
     glazing: params.get('lasit') !== '0',
-    screen: params.get('suoja') !== '0',
   },
   place: { x: number('x', HOME.x), z: number('z', HOME.z), yaw: THREE.MathUtils.degToRad(number('suunta', 0)) },
   moving: false,
@@ -42,7 +42,7 @@ const state = {
 // Näkymät. local: kameran paikka ja kohde mökin omassa koordinaatistossa (seuraa mökkiä), muut
 // maailman koordinaateissa. sun: [atsimuutti x-akselista kohti järveä, korkeus].
 const VIEWS = {
-  mokki: { name: 'Mökki', local: true, pos: [-10, 3.6, 21], target: [0, 1.7, 3.2], tall: { local: true, pos: [-2.5, 5.4, 22], target: [0, 1.6, 3.6] }, sun: [128, 33], fit: true },
+  mokki: { name: 'Mökki', local: true, pos: [-10, 3.4, 21], target: [0, 1.5, 3.2], bias: 0, tall: { local: true, pos: [-2.5, 4.6, 22], target: [0, 1.4, 3.6], bias: 0, fit: true, margin: 0.93, sun: [128, 33] }, sun: [128, 33], fit: true },
   tontti: { name: 'Tontti', pos: [-58, 30, 104], target: [0, 3, -4], sun: [128, 35] },
   terassi: { name: 'Terassi', local: true, pos: [7.5, 2.5, 14.5], target: [-1.6, 1.4, 5.6], sun: [118, 30] },
   nurkka: { name: 'Nurkka', local: true, pos: [-9.0, 1.7, -6.7], target: [-5.9, 1.45, -3.9], sun: [214, 27] },
@@ -73,7 +73,11 @@ function build({ renderer, scene, quality, Q }) {
   };
   const frame = mesh(wood);
   const works = mesh(wood); // portaat ja kaide: riippuvat maastosta
-  const pillars = mesh(createConcreteMaterial());
+  const pillars = mesh(createConcreteMaterial()); // terassin harkot
+  const plinth = mesh(createConcreteMaterial({ cast: true }));
+  plinth.geometry = plinthGeometry();
+  const vents = mesh(new THREE.MeshStandardNodeMaterial({ color: 0x0b0b0b, roughness: 0.6, metalness: 0.4 }), false);
+  vents.geometry = ventGeometry();
   const glassMaterial = createGlassMaterial();
   const glass = mesh(glassMaterial, false);
   const sliding = mesh(glassMaterial, false);
@@ -96,35 +100,43 @@ function build({ renderer, scene, quality, Q }) {
   const toWorld = (x, y, z) => cabin.localToWorld(new THREE.Vector3(x, y, z));
   const boxes = () => footprintBoxes(state.terrace);
 
-  // Mökin korkeusasema: perustuspalkkien alle jää ylärinteen puolella vähintään 40 cm, ja
-  // alarinteen pilarit ovat sen verran pidempiä kuin rinne laskee.
+  // Rakennuspaikka: maa tasataan mökin ja terassin alta jalanjäljen luonnollisen maan
+  // keskikorkeuteen (leikkaus ja täyttö tasan), ja sokkelia jää näkyviin noin 35 cm.
   const settle = () => {
     const { x, z, yaw } = state.place;
     const c = Math.cos(yaw), s = Math.sin(yaw);
-    const ground = (lx, lz) => heightAt(x + lx * c + lz * s, z - lx * s + lz * c);
-    let y0 = -Infinity;
-    for (let i = 0; i <= 8; i++) for (let j = 0; j <= 6; j++) y0 = Math.max(y0, ground(-DIM.width / 2 + (DIM.width * i) / 8, -DIM.depth / 2 + (DIM.depth * j) / 6) + 0.4 + BEAM.depth);
-    if (state.terrace.on) {
-      for (const [bx, bz, hx, hz] of boxes()) {
-        for (let i = 0; i <= 6; i++) for (let j = 0; j <= 6; j++) y0 = Math.max(y0, ground(bx - hx + (2 * hx * i) / 6, bz - hz + (2 * hz * j) / 6) + 0.3 + 0.16);
+    const world = (lx, lz) => [x + lx * c + lz * s, z - lx * s + lz * c];
+    let sum = 0, count = 0;
+    for (const [bx, bz, hx, hz] of boxes()) {
+      if (!(hx > 0)) continue;
+      for (let i = 0; i <= 8; i++) {
+        for (let j = 0; j <= 8; j++) {
+          sum += naturalHeight(...world(bx - hx + (2 * hx * i) / 8, bz - hz + (2 * hz * j) / 8));
+          count++;
+        }
       }
     }
+    const level = sum / count + 0.06;
+    const y0 = level + PLINTH.height;
+    setPad(state.place, boxes(), level);
+    terrain.reshape();
     cabin.position.set(x, y0, z);
     cabin.rotation.y = yaw;
     cabin.updateMatrixWorld(true);
-    const groundAt = (lx, lz) => ground(lx, lz) - y0;
+    const groundAt = (lx, lz) => heightAt(...world(lx, lz)) - y0;
 
-    const list = pillarSpots().map(([px, pz]) => ({ x: px, z: pz, top: -BEAM.depth - 0.006, size: PILLAR.size }));
-    swap(pillars, pillarGeometry(list.concat(state.terrace.on ? terracePillars : []), groundAt));
+    swap(pillars, pillarGeometry(state.terrace.on ? terracePillars : [], groundAt));
     const t = new Timber();
     if (state.terrace.on) buildGroundworks(t, state.terrace, groundAt);
     swap(works, t.build().geometry);
 
-    // kasvit ja kivet väistyvät jalanjäljen alta
+    // kasvit ja kivet väistyvät jalanjäljen alta, ja varvikko seuraa muotoiltua maata
     const [a, b] = boxes();
     footprint.place.value.set(x, z, c, s);
     footprint.boxA.value.set(...a);
     footprint.boxB.value.set(...b);
+    footprint.house.value.set(0, 0, DIM.width / 2, DIM.depth / 2);
+    footprint.pad.value.set(level, 1);
     // pihapiiri etuseinästä 17 m järvelle päin
     footprint.yard.value.set(0, DIM.depth / 2 + 8.5, 10, 8.5);
     footprint.view.value.set(0, DIM.depth / 2 + 22, 9, 22);
@@ -217,16 +229,63 @@ function build({ renderer, scene, quality, Q }) {
     }
     return best || { x: -14, z: 22 };
   };
+  // Kuinka paljon tontin puita on kameran ja kohdepisteiden välissä (pihapiiristä kaadettuja
+  // ei lasketa). Käytetään valitsemaan kuvakulma, josta mökki näkyy runkojen välistä.
+  const yardBox = () => [[0, DIM.depth / 2 + 8.5, 10, 8.5]];
+  const blocked = (cx, cz, targets) => {
+    let score = 0;
+    for (const t of forest.trees) {
+      if (t.lod !== 0) continue;
+      if (footprintDistanceJS(state.place, yardBox(), t.x, t.z) < 0 || footprintDistanceJS(state.place, boxes(), t.x, t.z) < t.margin) continue;
+      for (const [tx, tz] of targets) {
+        const dx = tx - cx, dz = tz - cz, len = Math.hypot(dx, dz);
+        const u = ((t.x - cx) * dx + (t.z - cz) * dz) / (len * len);
+        if (u < 0.03 || u > 0.97) continue;
+        const side = Math.abs((t.x - cx) * dz - (t.z - cz) * dx) / len;
+        const reach = t.kind === 'pine' ? 0.7 : 2.4;
+        if (side < reach) score += (1 - side / reach) * (1.3 - u);
+        // aivan kameran edessä oleva puu peittäisi koko kuvan
+        if (u * len < 5 && side < 2.5) score += 3;
+      }
+    }
+    return score;
+  };
   const resolveView = (view) => {
+    if (view.local && view.fit) {
+      // kokonaiskuva: kierretään kameraa mökin ympäri, kunnes edessä on vähiten puita
+      const target = new THREE.Vector3(...view.target);
+      const dir = new THREE.Vector3(...view.pos).sub(target);
+      const facade = [-5, 0, 5].map((lx) => {
+        const p = toWorld(lx, 1.5, DIM.depth / 2);
+        return [p.x, p.z];
+      });
+      let best = null;
+      for (let a = -48; a <= 48; a += 8) {
+        const d = dir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(a));
+        const flat = Math.hypot(d.x, d.z);
+        const reachOut = innerWidth / innerHeight < 0.8 ? 35 : 28;
+        const probe = toWorld(target.x + (d.x / flat) * reachOut, 2, target.z + (d.z / flat) * reachOut);
+        const score = blocked(probe.x, probe.z, facade) + Math.abs(a - (view.bias || 0)) * 0.012;
+        if (!best || score < best.score) best = { score, d };
+      }
+      const pos = target.clone().add(best.d);
+      const sun = [view.sun[0] - THREE.MathUtils.radToDeg(state.place.yaw), view.sun[1]];
+      return { ...view, pos: toWorld(pos.x, pos.y, pos.z).toArray(), target: toWorld(...view.target).toArray(), sun };
+    }
     if (view.local) {
       const sun = [view.sun ? view.sun[0] - THREE.MathUtils.radToDeg(state.place.yaw) : 0, view.sun ? view.sun[1] : 30];
       return { ...view, pos: toWorld(...view.pos).toArray(), target: toWorld(...view.target).toArray(), sun };
     }
     if (view.shore) {
-      // rannalta vesirajasta ylös mökille
+      // järveltä rantaan: veneestä katsottuna rantaviiva, lehtipuureunus ja mökki puiden takana
       const front = toWorld(0, 1.4, DIM.depth / 2);
-      const x = front.x + 7, z = shoreZ(x) - 0.6;
-      return { ...view, pos: [x, heightAt(x, z) + 1.55, z], target: [front.x - 1, front.y + 0.4, front.z] };
+      let best = null;
+      for (let off = -12; off <= 12; off += 1.5) {
+        const x = front.x + off, z = shoreZ(x) + 9;
+        const score = blocked(x, z, [[front.x - 3, front.z], [front.x + 3, front.z]]) + Math.abs(off) * 0.02;
+        if (!best || score < best.score) best = { x, z, score };
+      }
+      return { ...view, pos: [best.x, 1.7, best.z], target: [front.x, front.y - 0.6, front.z] };
     }
     if (view.floor) {
       const p = floorSpot();
@@ -238,7 +297,7 @@ function build({ renderer, scene, quality, Q }) {
   const fitCorners = () => {
     const out = [];
     const z1 = state.terrace.on ? DIM.depth / 2 + TERRACE.depth + 0.6 : DIM.depth / 2 + 0.4;
-    for (const x of [-DIM.width / 2 - 0.5, DIM.width / 2 + 0.5]) for (const y of [-1.0, plan.roofMax + 0.3]) for (const z of [-DIM.depth / 2 - 0.4, z1]) out.push(toWorld(x, y, z));
+    for (const x of [-DIM.width / 2 - 0.5, DIM.width / 2 + 0.5]) for (const y of [-0.4, plan.roofMax + 0.3]) for (const z of [-DIM.depth / 2 - 0.4, z1]) out.push(toWorld(x, y, z));
     return out;
   };
 
@@ -300,7 +359,6 @@ function wireControls(viewer) {
     document.querySelectorAll('[data-end]').forEach((b) => pressed(b, b.dataset.end === t.side));
     document.querySelectorAll('[data-tub]').forEach((b) => pressed(b, b.dataset.tub === t.tub));
     pressed($('glazing'), t.glazing);
-    pressed($('screen'), t.screen);
     pressed($('moveOn'), state.moving);
     const deg = Math.round(THREE.MathUtils.radToDeg(state.place.yaw));
     $('yaw').value = deg;
@@ -343,7 +401,6 @@ function wireControls(viewer) {
     redraw();
   };
   $('deckOn').addEventListener('click', terrace((t) => { t.on = !t.on; }));
-  $('screen').addEventListener('click', terrace((t) => { t.screen = !t.screen; }));
   $('glazing').addEventListener('click', terrace((t) => { t.glazing = !t.glazing; }));
   document.querySelectorAll('[data-end]').forEach((b) => b.addEventListener('click', terrace((t) => { t.side = b.dataset.end; })));
   document.querySelectorAll('[data-tub]').forEach((b) => b.addEventListener('click', terrace((t) => { t.tub = b.dataset.tub; })));
@@ -373,6 +430,6 @@ function wireControls(viewer) {
   window.__cabin = { state, stats, rebuildFrame, rebuildRoof, moveTo, sync, site: scene3d };
 }
 
-startViewer({ views: VIEWS, defaultView: 'mokki', build, maxDistance: 170, aoRadius: 0.5, sunDefault: [128, 33], far: 1600 })
+startViewer({ views: VIEWS, defaultView: 'mokki', build, maxDistance: 170, aoRadius: 0.5, sunDefault: [128, 33], far: 1600, portraitFov: 46, maxPolar: 0.62 })
   .then(wireControls)
   .catch(showError);
