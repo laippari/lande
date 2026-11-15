@@ -40,8 +40,8 @@ async function main() {
   const coarse = matchMedia('(pointer: coarse)').matches;
   const quality = params.get('q') || (coarse ? 'mobile' : 'desktop');
   const Q = quality === 'mobile'
-    ? { shadow: 2048, stillLevel: 2, maxPixelRatio: 2, aoScale: 0.5 }
-    : { shadow: 4096, stillLevel: 3, maxPixelRatio: 2, aoScale: 1 };
+    ? { shadow: 2048, stillLevel: 2, maxPixelRatio: 2, motionPixelRatio: 1.5, aoScale: 0.5 }
+    : { shadow: 4096, stillLevel: 3, maxPixelRatio: 2, motionPixelRatio: 2, aoScale: 1 };
 
   const renderer = new THREE.WebGPURenderer({ antialias: false, forceWebGL: params.has('webgl'), powerPreference: 'high-performance' });
   renderer.toneMapping = { agx: THREE.AgXToneMapping, aces: THREE.ACESFilmicToneMapping, neutral: THREE.NeutralToneMapping }[params.get('tm') || 'neutral'];
@@ -89,6 +89,8 @@ async function main() {
     const src = tall ? view.tall : view;
     const target = new THREE.Vector3().fromArray(src.target);
     const pos = new THREE.Vector3().fromArray(src.pos);
+    // pystynäytöllä lähikuvat otetaan hieman kauempaa, jotta kohde mahtuu kapeaan kuvaan
+    if (camera.aspect < 0.8 && !view.tall) pos.sub(target).multiplyScalar(1.45).add(target);
     if (view.fit) {
       const dir = pos.clone().sub(target).normalize();
       const probe = camera.clone();
@@ -125,7 +127,7 @@ async function main() {
     dirty = true;
   };
 
-  const goTo = (key, instant = false) => {
+  const goTo = (key, { instant = false, keepSun = false } = {}) => {
     const view = VIEWS[key];
     if (!view) return;
     currentView = key;
@@ -136,7 +138,8 @@ async function main() {
       camera.position.copy(to.pos);
       controls.target.copy(to.target);
       controls.update();
-      applySun(sunTo[0], sunTo[1], true);
+      if (!keepSun) applySun(sunTo[0], sunTo[1], true);
+      dirty = true;
       return;
     }
     // atsimuutti kiertää lyhintä reittiä
@@ -222,7 +225,8 @@ async function main() {
   });
   addEventListener('resize', () => {
     resize();
-    if (currentView && !move) goTo(currentView, true);
+    // kuvasuhteen muuttuessa näkymä rajataan uudelleen, mutta valoon ei kosketa
+    if (currentView && !move) goTo(currentView, { instant: true, keepSun: true });
   });
   resize();
 
@@ -233,7 +237,7 @@ async function main() {
     controls.update();
     applySun(num('az', 152), num('el', 27), true);
   } else {
-    goTo(VIEWS[params.get('view')] ? params.get('view') : 'koko', true);
+    goTo(VIEWS[params.get('view')] ? params.get('view') : 'koko', { instant: true });
     if (params.has('az') || params.has('el')) applySun(num('az', env.state.azimuth), num('el', env.state.elevation), true);
   }
 
@@ -260,10 +264,21 @@ async function main() {
     currentView = null;
     ui.setView(null);
   };
+  let down = null;
+  renderer.domElement.addEventListener('pointerdown', (ev) => {
+    down = { x: ev.clientX, y: ev.clientY, t: performance.now() };
+  });
   renderer.domElement.addEventListener('pointerup', (ev) => {
     const now = performance.now();
+    // napautus on lyhyt painallus, joka ei liiku; veto tai nipistys ei kelpaa
+    const tap = down && now - down.t < 300 && Math.hypot(ev.clientX - down.x, ev.clientY - down.y) < 8;
+    down = null;
+    if (!tap) {
+      lastTap = 0;
+      return;
+    }
     const near = tapAt && Math.hypot(ev.clientX - tapAt.x, ev.clientY - tapAt.y) < 24;
-    if (now - lastTap < 320 && near) {
+    if (now - lastTap < 340 && near) {
       focus(ev);
       lastTap = 0;
     } else {
@@ -273,7 +288,7 @@ async function main() {
   });
 
   // Liikkeessä tarkkuus mukautuu laitteen nopeuteen; pysähtyessä piirretään täysi kuva.
-  let motionRatio = maxPixelRatio;
+  let motionRatio = Math.min(maxPixelRatio, Q.motionPixelRatio);
   let slow = 0;
   let fast = 0;
   const adapt = (dt) => {
