@@ -140,9 +140,11 @@ varpumatto sammaleisine kivineen ja ranta, jossa metsä ulottuu vesirajaan.
   4 m eli läpimitta yli metrin. Männyn oksat ovat oksan suuntaisia neulasviuhkoja.
   Seassa on nuoria mäntyjä, alikasvoskuusia, koivuja, haaparyhmä, katajia ja pihlajia.
   Tontin ympärillä on noin 1 500 kevyempää puuta taustana.
-- Kiviä on noin 650: parikymmentä isoa siirtolohkaretta seuralaisineen, sammaleisia maakiviä
-  ryhminä ja rantaviivan kivikko. Metsässä kivet ovat sammalen ja rupijäkälän peitossa, vesirajassa
-  paljaita ja märkiä.
+- Kiviä on noin 3 000: noin 40 isoa siirtolohkaretta seuralaisineen (joukossa muutama yli
+  kolmimetrinen), noin 40 kivikkoa, joissa on kymmeniä pieniä ja keskikokoisia kiviä tiheästi,
+  hajanaisia maakiviä ryhminä ja rantaviivan kivikko. Isojen lohkareiden laki on sammalen
+  peitossa, pienet kivet ovat jäkälän harmaata graniittia, ja vesirajassa kivet ovat paljaita
+  ja märkiä. Kivien päällä ei kasva varpuja.
 - Varvikko peittää kangasmetsän pohjan lähes yhtenäisesti: noin 63 000 mätästä (puhelimessa
   vähemmän) mustikkaa, puolukkaa, kanervaa ja metsälauhaa luonnollisessa koossaan (puolukka
   10–20 cm, mustikka 20–30 cm, kanerva 25–40 cm); rannassa heinää ja saraa. Laji valitaan
