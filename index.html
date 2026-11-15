@@ -7,7 +7,7 @@
   <meta name="color-scheme" content="light">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="description" content="Piiluhirsistä veistetty mökin runko lohenpyrstönurkin: 14 × 6 m, sisäkorkeus 4 m, pulpetti- tai harjakatto. WebGPU.">
+  <meta name="description" content="Piiluhirsistä veistetty mökki rinnetontilla järven rannassa: 12 × 8 m, rossipohja pilareilla, terassi, pergola ja palju. WebGPU.">
   <title>Hirsimökki</title>
   <style>
     :root {
@@ -118,10 +118,22 @@
     .switch[aria-pressed="true"] i::after { transform: translateX(16px); }
     #title a { color: inherit; pointer-events: auto; text-underline-offset: 2px; }
 
-    #bar { display: flex; gap: 8px; align-items: center; max-width: 100%; pointer-events: auto; }
-    #views {
+    #views, #tools {
       display: flex; gap: 2px; padding: 4px; border-radius: 999px; overflow-x: auto; scrollbar-width: none;
+      max-width: 100%; box-sizing: border-box; pointer-events: auto;
     }
+    #tools::-webkit-scrollbar { display: none; }
+    #tools button {
+      border: 0; background: transparent; cursor: pointer; white-space: nowrap;
+      padding: 8px 15px; border-radius: 999px; font-size: 13px; font-weight: 550; color: var(--fg);
+      transition: background-color 0.25s ease, color 0.25s ease;
+    }
+    #tools button[aria-expanded="true"] { background: var(--on); color: var(--accent); box-shadow: 0 1px 3px rgba(40, 30, 20, 0.14); }
+    .pill {
+      border: 1px solid var(--track); background: transparent; cursor: pointer; border-radius: 999px;
+      padding: 6px 13px; font-size: 13px; font-weight: 550;
+    }
+    #dock { gap: 8px; }
     #views::-webkit-scrollbar { display: none; }
     #views button, .round {
       border: 0; background: transparent; cursor: pointer; white-space: nowrap;
@@ -144,8 +156,10 @@
       font-size: 14px; -webkit-user-select: text; user-select: text;
     }
     @media (max-width: 480px) {
-      #views button { padding: 9px 9px; font-size: 12.5px; }
-      #bar { gap: 6px; }
+      #views button { padding: 8px 10px; font-size: 12.5px; }
+      .panel { padding: 10px 14px 12px; gap: 8px; }
+      .seg button, .switch { font-size: 12.5px; padding-left: 10px; padding-right: 10px; }
+      .switch { padding-left: 0; padding-right: 0; }
     }
     @media (prefers-reduced-motion: reduce) {
       * { transition-duration: 0.01s !important; animation-duration: 0.01s !important; }
@@ -164,11 +178,11 @@
 </head>
 <body>
   <div id="viewer"></div>
-  <div id="loading"><span></span><p>Veistetään hirsiä…</p></div>
+  <div id="loading"><span></span><p>Veistetään hirsiä ja kasvatetaan metsää…</p></div>
 
   <header id="title" class="glass">
     <h1>Hirsimökki<span id="badge"></span></h1>
-    <p><span id="facts">Runko 14 × 6 m · sisäkorkeus 4 m</span> · <a href="hirsi.html">mallihirsi</a></p>
+    <p><span id="facts">12 × 8 m · sisäkorkeus 3 m</span> · <a href="hirsi.html">mallihirsi</a></p>
     <p id="meter" hidden></p>
   </header>
 
@@ -191,25 +205,48 @@
         </div>
       </div>
       <label id="frontRow">Ylitys edessä <output id="frontOut"></output>
-        <input id="front" type="range" min="0" max="2.5" step="0.05" aria-label="Katon ylitys edessä">
+        <input id="front" type="range" min="0" max="3" step="0.05" aria-label="Katon ylitys edessä">
+      </label>
+      <label id="backRow">Ylitys takana <output id="backOut"></output>
+        <input id="back" type="range" min="0" max="3" step="0.05" aria-label="Katon ylitys takana">
       </label>
       <label><span id="sideLabel">Ylitys sivuilla</span> <output id="sideOut"></output>
         <input id="side" type="range" min="0" max="1.5" step="0.05" aria-label="Katon ylitys sivuilla">
       </label>
     </div>
-    <div id="bar">
-      <nav id="views" class="glass" aria-label="Näkymät"></nav>
-      <button id="sun" class="round glass" type="button" aria-label="Valaistus" aria-expanded="false" aria-controls="light" data-panel="light">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="4.2"/>
-          <path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.3 5.3l1.7 1.7M17 17l1.7 1.7M18.7 5.3 17 7M7 17l-1.7 1.7"/>
-        </svg>
-      </button>
-      <button id="roofBtn" class="round glass" type="button" aria-label="Katto" aria-expanded="false" aria-controls="roof" data-panel="roof">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M3 11.5 12 5l9 6.5M6 10v9h12v-9"/>
-        </svg>
-      </button>
+    <div id="deck" class="panel glass" hidden>
+      <div class="row">
+        <button id="deckOn" class="switch" type="button" aria-pressed="true">Terassi ja pergola <i></i></button>
+        <div class="seg" role="group" aria-label="Pergolan pää">
+          <button type="button" data-end="left" aria-pressed="true">Vasen</button>
+          <button type="button" data-end="right" aria-pressed="false">Oikea</button>
+        </div>
+      </div>
+      <div class="seg" role="group" aria-label="Allas">
+        <button type="button" data-tub="palju" aria-pressed="true">Palju</button>
+        <button type="button" data-tub="spa" aria-pressed="false">Poreallas</button>
+        <button type="button" data-tub="none" aria-pressed="false">Ei allasta</button>
+      </div>
+      <div class="row">
+        <button id="glazing" class="switch" type="button" aria-pressed="true">Liukulasit kiinni <i></i></button>
+        <button id="screen" class="switch" type="button" aria-pressed="true">Näkösuoja <i></i></button>
+      </div>
+    </div>
+    <div id="place" class="panel glass" hidden>
+      <div class="row">
+        <button id="moveOn" class="switch" type="button" aria-pressed="false">Siirrä napauttamalla maastoa <i></i></button>
+        <button id="placeReset" class="pill" type="button">Palauta</button>
+      </div>
+      <label>Mökin suunta <output id="yawOut"></output>
+        <input id="yaw" type="range" min="-180" max="180" step="5" aria-label="Mökin suunta">
+      </label>
+    </div>
+    <nav id="views" class="glass" aria-label="Näkymät"></nav>
+    <div id="tools" class="glass" role="toolbar" aria-label="Säätimet">
+      <button type="button" aria-expanded="false" aria-controls="light" data-panel="light">Valo</button>
+      <button type="button" aria-expanded="false" aria-controls="roof" data-panel="roof">Katto</button>
+      <button type="button" aria-expanded="false" aria-controls="deck" data-panel="deck">Terassi</button>
+      <button type="button" aria-expanded="false" aria-controls="place" data-panel="place">Paikka</button>
     </div>
   </div>
 

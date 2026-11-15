@@ -6,11 +6,11 @@
 // sivuilla voi säätää rakentamatta runkoa uudelleen.
 
 import * as THREE from 'three/webgpu';
-import { vec3, positionWorld, fract, abs, smoothstep, mix, float } from 'three/tsl';
+import { vec3, positionLocal, fract, abs, smoothstep, mix, float } from 'three/tsl';
 import { DIM } from './plan.js';
 
 const THICK = { mono: 0.16, gable: 0.14 };
-const EAVE = 0.5; // räystäs takana ja harjakaton molemmilla lappeilla
+const EAVE = 0.5; // harjakaton räystäs molemmilla lappeilla
 const SEAM = { gap: 0.5, width: 0.028, height: 0.032 };
 
 function makeMaterials() {
@@ -19,7 +19,7 @@ function makeMaterials() {
   const trim = new THREE.MeshStandardNodeMaterial({ color: 0x26282b, roughness: 0.7, metalness: 0 });
   // räystään aluslaudoitus: vaaleaa lautaa, raot 12 cm välein
   const soffit = new THREE.MeshStandardNodeMaterial({ roughness: 0.82, metalness: 0 });
-  const gap = smoothstep(0.0, 0.004, abs(fract(positionWorld.x.div(0.12)).sub(0.5)).mul(0.12));
+  const gap = smoothstep(0.0, 0.004, abs(fract(positionLocal.x.div(0.12)).sub(0.5)).mul(0.12));
   soffit.colorNode = mix(vec3(0.2, 0.14, 0.08), vec3(0.58, 0.41, 0.22), gap);
   soffit.roughnessNode = float(0.82);
   return { steel, seam, trim, soffit };
@@ -67,9 +67,9 @@ export function createRoof() {
     group.add(m);
   }
 
-  // front ja side: ylitys seinän ulkopinnasta (m). Harjakatossa räystäät ovat kiinteät ja
+  // front, back ja side: ylitys seinän ulkopinnasta (m). Harjakatossa räystäät ovat kiinteät ja
   // side on päätyräystään ylitys.
-  function update(plan, { front, side }) {
+  function update(plan, { front, back, side }) {
     const { X0, X1, Z0, Z1 } = plan.bounds;
     const q = { steel: new Quads(), seam: new Quads(), trim: new Quads(), soffit: new Quads() };
     const mono = plan.roofType === 'mono';
@@ -107,7 +107,7 @@ export function createRoof() {
     const eave = (z, outward) => q.trim.add(under(x0, z), under(x1, z), over(x1, z), over(x0, z), [0, 0, outward]);
 
     if (mono) {
-      const zb = Z0 - EAVE, zf = Z1 + front;
+      const zb = Z0 - back, zf = Z1 + front;
       slope(zb, zf);
       eave(zb, -1);
       eave(zf, 1);
@@ -139,4 +139,4 @@ export function createRoof() {
   return { group, update, eave: EAVE };
 }
 
-export const ROOF_LIMITS = { front: [0, 2.5], side: [0, 1.5], wall: DIM.wall };
+export const ROOF_LIMITS = { front: [0, 3], back: [0, 3], side: [0, 1.5], wall: DIM.wall };

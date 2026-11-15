@@ -14,30 +14,15 @@
 
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, float, vec2, vec3, vec4, attribute, property, normalLocal, texture3D, mix, smoothstep, clamp, max, abs,
+  Fn, If, Loop, float, vec2, vec3, vec4, attribute, property, normalLocal, mix, smoothstep, clamp, max, abs,
   sign, floor, fract, sin, cos, length, dot, normalize, pow, exp, fwidth, select, transformNormalToView,
 } from 'three/tsl';
 import { COL, SURF, hash11, noise1 } from '../log/wood.js';
-import { mulberry32 } from '../log/hewing.js';
+import { noise3 } from '../noise.js';
 import { DIM } from './plan.js';
 
-const N = 32; // kohinatekstuurin sivu
 const PITCH = 0.092; // piiluiskujen keskimääräinen väli (m)
 const WHORL = 0.48; // oksakiehkuroiden väli (m)
-
-function noiseTexture() {
-  const rnd = mulberry32(20261115);
-  const data = new Uint8Array(N * N * N * 4);
-  for (let i = 0; i < data.length; i++) data[i] = Math.floor(rnd() * 256);
-  const t = new THREE.Data3DTexture(data, N, N, N);
-  t.format = THREE.RGBAFormat;
-  t.type = THREE.UnsignedByteType;
-  t.minFilter = THREE.LinearFilter;
-  t.magFilter = THREE.LinearFilter;
-  t.wrapS = t.wrapT = t.wrapR = THREE.RepeatWrapping;
-  t.needsUpdate = true;
-  return t;
-}
 
 // neljä satunnaislukua yhdestä luvusta
 const hash41 = Fn(([n]) => {
@@ -47,15 +32,6 @@ const hash41 = Fn(([n]) => {
 });
 
 export function createCabinWoodMaterial() {
-  const tex = noiseTexture();
-  // Pehmeä arvokohina: tekstuurin tekselit ovat hilapisteitä, ja koordinaatin murto-osa
-  // pehmennetään ennen hakua, jolloin lineaarinen suodatus antaa sileän kohinan. Arvot −1…1.
-  const noise3 = (p) => {
-    const i = floor(p);
-    const f = p.sub(i);
-    return texture3D(tex, i.add(f.mul(f).mul(f.mul(-2).add(3))).add(0.5).div(N)).mul(2).sub(1);
-  };
-
   const outRoughness = property('float', 'woodRoughness');
   const outNormal = property('vec3', 'woodNormal');
 
@@ -64,6 +40,7 @@ export function createCabinWoodMaterial() {
     const W = attribute('wood', 'vec4');
     const yaw = attribute('yaw', 'vec2');
     const surf = attribute('surf', 'float');
+    const tint = attribute('tint', 'vec3');
     // Siemen pyöristetään: kärjestä pikseliin interpoloitu luku heittää hieman, ja satunnaisfunktio
     // tekisi heitosta kohinaa.
     const seed = floor(W.x.mul(16).add(0.5)).div(16).toVar();
@@ -234,11 +211,16 @@ export function createCabinWoodMaterial() {
       })
       .ElseIf(is(SURF.TOP), () => {
         rough.assign(float(0.54).sub(density.mul(0.08)));
+      })
+      .ElseIf(is(SURF.SAWN), () => {
+        rough.assign(0.7);
       });
     rough.assign(mix(rough, 0.34, knotIn.mul(endGrain.oneMinus()).mul(0.8)));
 
+    col.mulAssign(tint);
     outRoughness.assign(clamp(rough, 0.08, 1));
-    outNormal.assign(X.mul(nl.x).add(vec3(0, 1, 0).mul(nl.y)).add(Z.mul(nl.z)));
+    // vain veistetyn kyljen normaali muuttuu; muut pinnat käyttävät verkon normaalia
+    outNormal.assign(select(isHewn, X.mul(nl.x).add(vec3(0, 1, 0).mul(nl.y)).add(Z.mul(nl.z)), nW));
     return col;
   });
 

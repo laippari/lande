@@ -15,7 +15,7 @@ const deg = THREE.MathUtils.degToRad;
 // shadowBox: laatikko, jonka ympärille varjokartta sovitetaan. groundAO: valinnainen solmu, joka
 // kertoo, kuinka paljon taivaasta näkyy maan kohdassa (1 = koko taivas). lightGround: kevyempi
 // maan varjostin isoihin näkymiin.
-export function createEnvironment(renderer, scene, { shadowSize = 4096, shadowBox, groundAO = null, lightGround = false } = {}) {
+export function createEnvironment(renderer, scene, { shadowSize = 4096, shadowBox, groundAO = null, lightGround = false, flatGround = true, fog = [35, 320], groundTint = null, shadowReach = 0, shadowSquare = false, staticShadows = false } = {}) {
   const u = {
     sunDir: uniform(new THREE.Vector3(0, 1, 0)),
     sunColor: uniform(new THREE.Color(1, 1, 1)),
@@ -88,19 +88,25 @@ export function createEnvironment(renderer, scene, { shadowSize = 4096, shadowBo
   // --- aurinko ---
   const sun = new THREE.DirectionalLight(0xffffff, 1);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(shadowSize, shadowSize / 2);
+  sun.shadow.mapSize.set(shadowSize, shadowSquare ? shadowSize : shadowSize / 2);
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.004;
   sun.shadow.radius = 2.5;
+  // Paikallaan pysyvässä näkymässä varjokartta piirretään vain, kun valo, alue tai sisältö muuttuu.
+  sun.shadow.autoUpdate = !staticShadows;
   scene.add(sun, sun.target);
 
-  scene.fog = new THREE.Fog(0xffffff, 35, 320);
+  scene.fog = new THREE.Fog(0xffffff, fog[0], fog[1]);
 
   // Varjokartta sovitetaan kohteen ja sen maahan lankeavan varjon ympärille.
-  const box = shadowBox;
+  let box = shadowBox;
+  let lastDir = new THREE.Vector3(0, 1, 0);
   const fitShadow = (dir) => {
+    lastDir = dir;
+    const floor = box.min.y; // taso, jolle varjot lankeavat
     const target = box.getCenter(new THREE.Vector3());
-    const dist = 14 + box.getSize(new THREE.Vector3()).length();
+    // shadowReach: kuinka kaukaa laatikon ulkopuolelta (auringon suunnasta) varjot voivat langeta
+    const dist = 14 + shadowReach + box.getSize(new THREE.Vector3()).length();
     sun.position.copy(target).addScaledVector(dir, dist);
     sun.target.position.copy(target);
     const z = dir.clone();
@@ -118,14 +124,15 @@ export function createEnvironment(renderer, scene, { shadowSize = 4096, shadowBo
       p.set(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z);
       add(p.clone());
       // kulman varjo maassa (pitkät varjot rajataan)
-      const k = Math.min(p.y / Math.max(dir.y, 0.05), 3.5 + box.max.y * 2);
-      add(p.clone().addScaledVector(dir, -k).setY(0));
+      const k = Math.min((p.y - floor) / Math.max(dir.y, 0.05), 3.5 + (box.max.y - floor) * 2);
+      add(p.clone().addScaledVector(dir, -k).setY(floor));
     }
     const m = 0.08;
     const cam = sun.shadow.camera;
     cam.left = x0 - m; cam.right = x1 + m; cam.bottom = y0 - m; cam.top = y1 + m;
-    cam.near = dist - z1 - 0.5; cam.far = dist - z0 + 0.5;
+    cam.near = Math.max(0.5, dist - z1 - 0.5 - shadowReach); cam.far = dist - z0 + 0.5;
     cam.updateProjectionMatrix();
+    sun.shadow.needsUpdate = true;
   };
 
   // --- maa: tiivistä hiekkaa, jossa on siellä täällä pikkukiviä ---
@@ -163,7 +170,7 @@ export function createEnvironment(renderer, scene, { shadowSize = 4096, shadowBo
   const ground = new THREE.Mesh(new THREE.CircleGeometry(320, 96), groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
-  scene.add(ground);
+  if (flatGround) scene.add(ground);
 
   const state = { azimuth: 0, elevation: 30 };
 
@@ -189,7 +196,8 @@ export function createEnvironment(renderer, scene, { shadowSize = 4096, shadowBo
     // maan heijastama valo: albedo × (aurinko + taivas) / π
     const irr = intensity * Math.sin(el);
     const g = 0.36 / Math.PI;
-    u.ground.value.setRGB(g * (irr * sunCol.r + 2.0 * k), g * 0.88 * (irr * sunCol.g + 2.3 * k), g * 0.72 * (irr * sunCol.b + 2.7 * k));
+    const gt = groundTint || [1, 0.88, 0.72];
+    u.ground.value.setRGB(g * gt[0] * (irr * sunCol.r + 2.0 * k), g * gt[1] * (irr * sunCol.g + 2.3 * k), g * gt[2] * (irr * sunCol.b + 2.7 * k));
     scene.fog.color.copy(u.horizon.value);
 
     fitShadow(dir);
@@ -205,6 +213,16 @@ export function createEnvironment(renderer, scene, { shadowSize = 4096, shadowBo
   // Kameran valotus: matalalla auringolla valoa on vähemmän, joten valotusta nostetaan.
   const exposure = () => 1 + 0.55 * (1 - THREE.MathUtils.smoothstep(state.elevation, 3, 45));
 
-  return { sun, ground, setSun, updateEnvironment, exposure, state, uniforms: u };
+  // Varjokartan alue voi seurata kameraa (iso tontti): uusi laatikko ja sovitus samaan valon suuntaan.
+  const setShadowBox = (next) => {
+    box = next;
+    fitShadow(lastDir);
+  };
+
+  const refreshShadows = () => {
+    sun.shadow.needsUpdate = true;
+  };
+
+  return { sun, ground, setSun, setShadowBox, refreshShadows, updateEnvironment, exposure, state, uniforms: u };
 }
 
