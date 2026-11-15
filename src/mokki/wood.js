@@ -14,12 +14,16 @@
 
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, float, vec2, vec3, vec4, attribute, property, normalLocal, mix, smoothstep, clamp, max, abs,
+  Fn, If, Loop, float, vec2, vec3, vec4, attribute, property, normalLocal, mix, smoothstep, clamp, max, abs, uniform,
   sign, floor, fract, sin, cos, length, dot, normalize, pow, exp, fwidth, select, transformNormalToView,
 } from 'three/tsl';
 import { COL, SURF, hash11, noise1 } from '../log/wood.js';
 import { noise3 } from '../noise.js';
 import { DIM } from './plan.js';
+
+// Puun sävy 0…1: 0 on vastaveistetty vaalea mänty, 1 vuosia ulkona ollut, kullanruskeaksi
+// tummunut hirsi. Säädetään sivulta.
+export const woodTone = uniform(0.5);
 
 const PITCH = 0.092; // piiluiskujen keskimääräinen väli (m)
 const WHORL = 0.48; // oksakiehkuroiden väli (m)
@@ -217,6 +221,8 @@ export function createCabinWoodMaterial() {
       });
     rough.assign(mix(rough, 0.34, knotIn.mul(endGrain.oneMinus()).mul(0.8)));
 
+    // Auringon ja ilman vaikutuksesta mäntyhirsi tummuu kullanruskeaksi; syykuvio säilyy.
+    col.mulAssign(mix(vec3(1), vec3(0.6, 0.46, 0.33), woodTone));
     col.mulAssign(tint);
     outRoughness.assign(clamp(rough, 0.08, 1));
     // vain veistetyn kyljen normaali muuttuu; muut pinnat käyttävät verkon normaalia

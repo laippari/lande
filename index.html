@@ -80,30 +80,60 @@
     }
     #badge:empty { display: none; }
 
-    #dock {
-      position: fixed; left: 0; right: 0; bottom: 0;
-      padding: 0 max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
-      display: flex; flex-direction: column; align-items: center; gap: 10px;
-      pointer-events: none;
-      opacity: 0; transform: translateY(10px); transition: opacity 0.6s ease 0.3s, transform 0.6s var(--ease) 0.3s;
-    }
-    body.ready #dock { opacity: 1; transform: none; }
+    /* --- valikkopainike ja alapaneeli (bottom sheet) --- */
     #hint {
-      margin: 0; padding: 5px 12px; border-radius: 999px; font-size: 12px; color: rgba(255, 255, 255, 0.95);
-      background: rgba(30, 26, 22, 0.42); transition: opacity 0.8s ease; text-align: center;
+      position: fixed; left: 50%; bottom: max(24px, calc(env(safe-area-inset-bottom) + 12px)); transform: translateX(-50%);
+      margin: 0; padding: 6px 13px; border-radius: 999px; font-size: 12px; color: rgba(255, 255, 255, 0.95);
+      background: rgba(30, 26, 22, 0.42); transition: opacity 0.8s ease; text-align: center; pointer-events: none;
+      max-width: calc(100% - 140px); opacity: 0;
     }
-    #hint.gone { opacity: 0; }
+    body.ready #hint { opacity: 1; }
+    body.ready #hint.gone, body.sheet-open #hint { opacity: 0; }
 
-    .panel {
-      width: min(360px, 100%); box-sizing: border-box; padding: 12px 16px 14px; border-radius: 20px;
-      display: grid; gap: 10px; pointer-events: auto;
+    #menu {
+      position: fixed; right: max(16px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom));
+      width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+      color: var(--fg); padding: 0; z-index: 3;
+      opacity: 0; transform: scale(0.9); transition: opacity 0.5s ease 0.3s, transform 0.5s var(--ease) 0.3s, background-color 0.2s ease;
     }
-    .panel[hidden] { display: none; }
-    .panel label { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; font-size: 12px; color: var(--muted); }
-    .panel label[hidden] { display: none; }
-    .panel output { font-variant-numeric: tabular-nums; color: var(--fg); }
-    .panel input { grid-column: 1 / -1; width: 100%; margin: 4px 0 0; accent-color: var(--accent); height: 24px; touch-action: pan-y; }
-    .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    body.ready #menu { opacity: 1; transform: none; }
+    #menu svg { width: 22px; height: 22px; }
+    body.sheet-open #menu { opacity: 0; pointer-events: none; transform: scale(0.85); transition-delay: 0s; }
+    #sheetClose {
+      position: absolute; top: 25px; right: 12px; width: 36px; height: 36px; border-radius: 50%; padding: 0;
+      border: 0; background: var(--track); color: var(--fg); cursor: pointer; display: grid; place-items: center;
+    }
+    #sheetClose svg { width: 18px; height: 18px; }
+
+    #sheet {
+      position: fixed; left: 0; right: 0; bottom: 0; margin: 0 auto; width: min(480px, 100%); box-sizing: border-box; z-index: 2;
+      max-height: min(58vh, 520px); display: flex; flex-direction: column;
+      border-radius: 22px 22px 0 0; border-bottom: 0;
+      padding: 6px 0 max(14px, env(safe-area-inset-bottom));
+      transform: translateY(105%); transition: transform 0.38s var(--ease); visibility: hidden;
+    }
+    body.sheet-open #sheet { transform: none; visibility: visible; }
+    #sheet.dragging { transition: none; }
+    .grip { flex: none; height: 22px; display: grid; place-items: center; cursor: grab; touch-action: none; }
+    .grip::before { content: ""; width: 38px; height: 5px; border-radius: 3px; background: var(--track); }
+    .tabs {
+      flex: none; display: flex; gap: 2px; margin: 0 16px 10px; padding: 3px; border-radius: 999px; background: var(--track);
+      margin-right: 58px; overflow-x: auto; scrollbar-width: none;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tabs button {
+      flex: 1; border: 0; background: transparent; cursor: pointer; white-space: nowrap; border-radius: 999px;
+      padding: 7px 10px; font-size: 13px; font-weight: 550; color: var(--muted);
+    }
+    .tabs button[aria-selected="true"] { background: var(--on); color: var(--fg); box-shadow: 0 1px 3px rgba(40, 30, 20, 0.14); }
+    .tabpanel { overflow-y: auto; padding: 2px 16px 4px; display: grid; gap: 12px; align-content: start; overscroll-behavior: contain; }
+    .tabpanel[hidden] { display: none; }
+    .tabpanel label { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; font-size: 12px; color: var(--muted); }
+    .tabpanel label[hidden] { display: none; }
+    .tabpanel output { font-variant-numeric: tabular-nums; color: var(--fg); }
+    .tabpanel input[type=range] { grid-column: 1 / -1; width: 100%; margin: 4px 0 0; accent-color: var(--accent); height: 26px; touch-action: pan-y; }
+    .tabpanel .note { margin: -4px 0 0; font-size: 12px; color: var(--muted); }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
     .seg { display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--track); }
     .seg button, .switch {
       border: 0; background: transparent; cursor: pointer; white-space: nowrap; border-radius: 999px;
@@ -112,42 +142,22 @@
     .seg button { flex: 1; }
     .seg button[aria-pressed="true"] { background: var(--on); color: var(--fg); box-shadow: 0 1px 3px rgba(40, 30, 20, 0.14); }
     .switch { display: flex; align-items: center; gap: 10px; padding: 4px 0; color: var(--fg); }
-    .switch i { width: 38px; height: 22px; border-radius: 999px; background: var(--track); position: relative; transition: background-color 0.2s ease; }
+    .switch i { width: 38px; height: 22px; border-radius: 999px; background: var(--track); position: relative; transition: background-color 0.2s ease; flex: none; }
     .switch i::after { content: ""; position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(40, 30, 20, 0.3); transition: transform 0.2s var(--ease); }
     .switch[aria-pressed="true"] i { background: var(--accent); }
     .switch[aria-pressed="true"] i::after { transform: translateX(16px); }
-    #title a { color: inherit; pointer-events: auto; text-underline-offset: 2px; }
-
-    #views, #tools {
-      display: flex; gap: 2px; padding: 4px; border-radius: 999px; overflow-x: auto; scrollbar-width: none;
-      max-width: 100%; box-sizing: border-box; pointer-events: auto;
-    }
-    #tools::-webkit-scrollbar { display: none; }
-    #tools button {
-      border: 0; background: transparent; cursor: pointer; white-space: nowrap;
-      padding: 8px 15px; border-radius: 999px; font-size: 13px; font-weight: 550; color: var(--fg);
-      transition: background-color 0.25s ease, color 0.25s ease;
-    }
-    #tools button[aria-expanded="true"] { background: var(--on); color: var(--accent); box-shadow: 0 1px 3px rgba(40, 30, 20, 0.14); }
     .pill {
       border: 1px solid var(--track); background: transparent; cursor: pointer; border-radius: 999px;
-      padding: 6px 13px; font-size: 13px; font-weight: 550;
+      padding: 6px 13px; font-size: 13px; font-weight: 550; color: var(--fg);
     }
-    #dock { gap: 8px; }
-    #views::-webkit-scrollbar { display: none; }
-    #views button, .round {
-      border: 0; background: transparent; cursor: pointer; white-space: nowrap;
-      padding: 9px 14px; border-radius: 999px; font-size: 13px; font-weight: 550;
+    #title a { color: inherit; pointer-events: auto; text-underline-offset: 2px; }
+    #views { display: flex; flex-wrap: wrap; gap: 6px; }
+    #views button {
+      border: 1px solid var(--track); background: transparent; cursor: pointer; white-space: nowrap;
+      padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 550; color: var(--fg);
       transition: background-color 0.25s ease, color 0.25s ease;
     }
-    #views button { color: var(--muted); }
-    #views button[aria-pressed="true"] { background: var(--on); color: var(--fg); box-shadow: 0 1px 3px rgba(40, 30, 20, 0.14); }
-    .round {
-      flex: none; width: 44px; height: 44px; padding: 0; display: grid; place-items: center; border-radius: 50%;
-      border: 1px solid var(--glass-edge);
-    }
-    .round svg { width: 20px; height: 20px; }
-    .round[aria-expanded="true"] { background: var(--on); color: var(--accent); }
+    #views button[aria-pressed="true"] { background: var(--on); border-color: transparent; color: var(--accent); box-shadow: 0 1px 3px rgba(40, 30, 20, 0.14); }
     button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     #error {
@@ -156,8 +166,7 @@
       font-size: 14px; -webkit-user-select: text; user-select: text;
     }
     @media (max-width: 480px) {
-      #views button { padding: 8px 10px; font-size: 12.5px; }
-      .panel { padding: 10px 14px 12px; gap: 8px; }
+      .tabs button { padding: 7px 8px; font-size: 12.5px; }
       .seg button, .switch { font-size: 12.5px; padding-left: 10px; padding-right: 10px; }
       .switch { padding-left: 0; padding-right: 0; }
     }
@@ -186,9 +195,36 @@
     <p id="meter" hidden></p>
   </header>
 
-  <div id="dock">
-    <p id="hint">Vedä · nipistä · kaksoisnapauta tarkentaaksesi</p>
-    <div id="light" class="panel glass" hidden>
+  <p id="hint">Vedä · nipistä · kaksoisnapauta tarkentaaksesi</p>
+
+  <button id="menu" class="glass" type="button" aria-label="Säätimet" aria-expanded="false" aria-controls="sheet">
+    <svg class="open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+      <path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>
+    </svg>
+  </button>
+
+  <section id="sheet" class="glass" aria-label="Säätimet">
+    <div class="grip" aria-hidden="true"></div>
+    <button id="sheetClose" type="button" aria-label="Sulje säätimet">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+    <div class="tabs" role="tablist" aria-label="Säätimet">
+      <button type="button" role="tab" id="t-view" aria-controls="p-view" data-tab="view">Näkymä</button>
+      <button type="button" role="tab" id="t-light" aria-controls="p-light" data-tab="light">Valo</button>
+      <button type="button" role="tab" id="t-cabin" aria-controls="p-cabin" data-tab="cabin">Mökki</button>
+      <button type="button" role="tab" id="t-deck" aria-controls="p-deck" data-tab="deck">Terassi</button>
+      <button type="button" role="tab" id="t-place" aria-controls="p-place" data-tab="place">Paikka</button>
+    </div>
+
+    <div id="p-view" class="tabpanel" role="tabpanel" aria-labelledby="t-view">
+      <nav id="views" aria-label="Näkymät"></nav>
+      <label>Puut pois kameran ympäriltä <output id="clearOut"></output>
+        <input id="clear" type="range" min="0" max="60" step="1" aria-label="Puiden piilotus kameran ympäriltä">
+      </label>
+      <p class="note">Piilotetut puut varjostavat yhä, joten kuva pysyy luonnollisena.</p>
+    </div>
+
+    <div id="p-light" class="tabpanel" role="tabpanel" aria-labelledby="t-light" hidden>
       <label>Valon suunta <output id="azOut"></output>
         <input id="az" type="range" min="0" max="360" step="1" aria-label="Valon suunta">
       </label>
@@ -196,12 +232,16 @@
         <input id="el" type="range" min="4" max="70" step="1" aria-label="Auringon korkeus">
       </label>
     </div>
-    <div id="roof" class="panel glass" hidden>
+
+    <div id="p-cabin" class="tabpanel" role="tabpanel" aria-labelledby="t-cabin" hidden>
+      <label>Hirsien sävy <output id="toneOut"></output>
+        <input id="tone" type="range" min="0" max="1" step="0.05" aria-label="Hirsien sävy">
+      </label>
       <div class="row">
         <button id="roofOn" class="switch" type="button" aria-pressed="true">Katto <i></i></button>
         <div class="seg" role="group" aria-label="Katon tyyppi">
-          <button type="button" data-roof="mono" aria-pressed="true">Pulpettikatto</button>
-          <button type="button" data-roof="gable" aria-pressed="false">Harjakatto</button>
+          <button type="button" data-roof="mono" aria-pressed="true">Pulpetti</button>
+          <button type="button" data-roof="gable" aria-pressed="false">Harja</button>
         </div>
       </div>
       <label id="frontRow">Ylitys edessä <output id="frontOut"></output>
@@ -214,7 +254,8 @@
         <input id="side" type="range" min="0" max="1.5" step="0.05" aria-label="Katon ylitys sivuilla">
       </label>
     </div>
-    <div id="deck" class="panel glass" hidden>
+
+    <div id="p-deck" class="tabpanel" role="tabpanel" aria-labelledby="t-deck" hidden>
       <div class="row">
         <button id="deckOn" class="switch" type="button" aria-pressed="true">Terassi ja pergola <i></i></button>
         <div class="seg" role="group" aria-label="Pergolan pää">
@@ -227,27 +268,20 @@
         <button type="button" data-tub="spa" aria-pressed="false">Poreallas</button>
         <button type="button" data-tub="none" aria-pressed="false">Ei allasta</button>
       </div>
-      <div class="row">
-        <button id="glazing" class="switch" type="button" aria-pressed="true">Liukulasit kiinni <i></i></button>
-      </div>
+      <button id="glazing" class="switch" type="button" aria-pressed="true">Liukulasit kiinni <i></i></button>
     </div>
-    <div id="place" class="panel glass" hidden>
+
+    <div id="p-place" class="tabpanel" role="tabpanel" aria-labelledby="t-place" hidden>
       <div class="row">
         <button id="moveOn" class="switch" type="button" aria-pressed="false">Siirrä napauttamalla maastoa <i></i></button>
         <button id="placeReset" class="pill" type="button">Palauta</button>
       </div>
+      <p id="moveNote" class="note" hidden>Napauta maastoa paneelin yläpuolella: mökki siirtyy siihen ja maa muotoutuu sen alle.</p>
       <label>Mökin suunta <output id="yawOut"></output>
         <input id="yaw" type="range" min="-180" max="180" step="5" aria-label="Mökin suunta">
       </label>
     </div>
-    <nav id="views" class="glass" aria-label="Näkymät"></nav>
-    <div id="tools" class="glass" role="toolbar" aria-label="Säätimet">
-      <button type="button" aria-expanded="false" aria-controls="light" data-panel="light">Valo</button>
-      <button type="button" aria-expanded="false" aria-controls="roof" data-panel="roof">Katto</button>
-      <button type="button" aria-expanded="false" aria-controls="deck" data-panel="deck">Terassi</button>
-      <button type="button" aria-expanded="false" aria-controls="place" data-panel="place">Paikka</button>
-    </div>
-  </div>
+  </section>
 
   <p id="error" hidden></p>
   <script type="module" src="src/mokki.js"></script>
