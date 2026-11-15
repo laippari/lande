@@ -44,9 +44,10 @@ export function naturalHeight(x, z) {
     return -Math.min(0.1 * Math.min(out, 2.5) + 0.3 * Math.max(out - 2.5, 0) + 0.006 * Math.max(out - 2.5, 0) ** 2, 7);
   }
   // kivinen rantaviiva, matala törmä, loiva rinne jossa on tasaisempi hylly, ja harjun laki takana
-  let h = 0.14 * Math.min(d, 0.8) + 0.45 * sstep(0.5, 2.2, d) + 0.05 * Math.max(d - 2.2, 0);
-  h -= 0.55 * sstep(26, 56, d);
-  h += 3.0 * sstep(68, 118, d);
+  // Rinne on noin 9 %: rannasta tontin perälle maa nousee noin 12 m.
+  let h = 0.14 * Math.min(d, 0.8) + 0.45 * sstep(0.5, 2.2, d) + 0.088 * Math.max(d - 2.2, 0);
+  h -= 0.35 * sstep(26, 56, d);
+  h += 2.0 * sstep(68, 118, d);
   h -= 0.012 * Math.max(d - 125, 0);
   // maaston kumpuilu: ei aivan rannassa
   const k = sstep(3, 16, d);
@@ -104,8 +105,9 @@ export const footprint = {
   boxB: uniform(new THREE.Vector4(0, 0, 0, 0)),
   house: uniform(new THREE.Vector4(0, 0, 6, 4)), // pelkkä mökki: sen ympärillä on sorakaista
   pad: uniform(new THREE.Vector2(0, 0)), // muotoillun maan taso ja päällä/pois
-  yard: uniform(new THREE.Vector4(0, 12.5, 10, 8.5)), // pihapiiri mökin edessä: puut on kaadettu
-  view: uniform(new THREE.Vector4(0, 24, 9, 20)), // näkymälinja järvelle: matalat puut on raivattu, petäjät jätetty
+  roof: uniform(new THREE.Vector4(0, 0, 6.5, 4.5)), // katon ulottuma: puun runko ei saa osua räystääseen
+  // Kameran ympäriltä puut voi piilottaa kuvaamista varten (x, z, säde). Varjot jäävät.
+  clear: uniform(new THREE.Vector3(0, 0, 0)),
 };
 
 const toCabin = (p) => {
@@ -130,10 +132,10 @@ export const houseDistance = (p) => boxDistance(toCabin(p), footprint.house);
 export const padWeightNode = (p) => footprintDistance(p).smoothstep(PAD.inner, PAD.outer).oneMinus().mul(footprint.pad.y);
 export const padLift = (p, y) => mix(y, footprint.pad.x, padWeightNode(p));
 
-// etäisyys pihapiirin reunasta (negatiivinen pihalla)
-export const yardDistance = (p) => boxDistance(toCabin(p), footprint.yard);
-// etäisyys järvinäkymän raivatusta linjasta
-export const viewDistance = (p) => boxDistance(toCabin(p), footprint.view);
+// puun etäisyys rakennuksista: jalanjälki tai katon ulottuma
+export const buildingDistance = (p) => min(footprintDistance(p), boxDistance(toCabin(p), footprint.roof));
+// onko kohta kameran ympäriltä raivatulla alueella
+export const cameraCleared = (p) => length(p.sub(footprint.clear.xy)).lessThan(footprint.clear.z);
 
 // sama JavaScriptissä: boxes = [[cx, cz, hx, hz], …] mökin koordinaatistossa
 export function footprintDistanceJS(place, boxes, x, z) {

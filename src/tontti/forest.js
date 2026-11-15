@@ -18,7 +18,7 @@ import {
   length, normalize, cameraPosition, cameraViewMatrix, transformNormalToView, floor, select, uniform, min,
 } from 'three/tsl';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { SITE, naturalHeight, inland, dryness, coverAt, sandAt, footprint, footprintDistance, houseDistance, yardDistance, viewDistance, padWeightNode, shoreZ } from './terrain.js';
+import { SITE, naturalHeight, inland, dryness, coverAt, sandAt, footprint, footprintDistance, houseDistance, buildingDistance, cameraCleared, padWeightNode, shoreZ } from './terrain.js';
 import { noise3, fbm, vnoise } from '../noise.js';
 import { mulberry32 } from '../log/hewing.js';
 import { createFoliageAtlas, createTuftAtlas, TUFT_HEIGHT } from './atlas.js';
@@ -142,10 +142,8 @@ function growTree(t, B, F, rnd) {
   const { x, z, H, dbh, kind, lod } = t;
   const ground = naturalHeight(x, z);
   const y0 = ground - 0.25;
-  // matalalatvuksiset puut peittäisivät näkymän: ne merkitään negatiivisella varauksella
-  const low = kind !== 'pine';
-  // rannan reunus jää paikalleen myös näkymälinjalla
-  const base = [x, z, low && !t.fringe ? -t.margin : t.margin, ground];
+  // base: tyven paikka, kuinka lähelle rakennusta puu mahtuu, ja luonnollinen maanpinta
+  const base = [x, z, t.margin, ground];
   const seed = rnd() * 31;
   const species = { pine: 0, youngPine: 0, birch: 1, aspen: 2, rowan: 2, spruce: 3, alder: 4, bush: 4, juniper: 0 }[kind];
   const tint0 = TINT[kind === 'youngPine' ? 'pine' : kind];
@@ -173,7 +171,7 @@ function growTree(t, B, F, rnd) {
       const u = i === 0 ? 0 : i === 1 && lod === 0 ? 0.045 : Math.pow(i / n, 1.15);
       pts.push({ p: trunkAt(u), r: radiusAt(u), h: u });
     }
-    B.tube(pts, lod === 0 ? (dbh > 0.15 ? 7 : 5) : lod === 1 ? 5 : 4, species, seed, base);
+    B.tube(pts, lod === 0 ? (dbh > 0.4 ? 9 : dbh > 0.15 ? 6 : 5) : lod === 1 ? 5 : 4, species, seed, base);
   }
 
   // lehtitupsu: vaakakortti ja pystykortit ristissä
@@ -206,7 +204,7 @@ function growTree(t, B, F, rnd) {
     const flat = [side[0] * Math.cos(roll) + up[0] * Math.sin(roll), side[1] * Math.cos(roll) + up[1] * Math.sin(roll), side[2] * Math.cos(roll) + up[2] * Math.sin(roll)];
     const tn = vary(shadeK);
     F.card(centre, half, [flat[0] * width, flat[1] * width, flat[2] * width], 0, tn, base, from);
-    if (lod === 0) {
+    if (lod === 0 && kind === 'pine') {
       const w2 = width * 0.62;
       F.card(add(centre, up, w2 * 0.25), half, [up[0] * w2, up[1] * w2, up[2] * w2], 0, tn, base, from);
     }
@@ -223,10 +221,13 @@ function growTree(t, B, F, rnd) {
 
   if (kind === 'pine' || kind === 'youngPine') {
     const young = kind === 'youngPine';
-    const cb = young ? 0.16 + rnd() * 0.2 : 0.62 + rnd() * 0.14; // elävän latvuksen alaraja
-    const Rc = young ? H * (0.19 + rnd() * 0.06) : 1.4 + H * (0.03 + rnd() * 0.035);
+    const old = t.veteran;
+    // elävän latvuksen alaraja ja latvuksen säde: vanhalla männyllä latvus on leveä ja
+    // laakea, ja paksut oksat kiertyvät
+    const cb = young ? 0.16 + rnd() * 0.2 : old ? 0.5 + rnd() * 0.12 : 0.62 + rnd() * 0.14;
+    const Rc = young ? H * (0.19 + rnd() * 0.06) : old ? 2.6 + H * (0.06 + rnd() * 0.04) : 1.4 + H * (0.03 + rnd() * 0.035);
     const from = trunkAt(cb + (1 - cb) * 0.5);
-    const nb = lod === 0 ? (young ? 9 : 13 + Math.floor(rnd() * 5)) : lod === 1 ? 6 : 3;
+    const nb = lod === 0 ? (young ? 9 : old ? 20 + Math.floor(rnd() * 6) : 13 + Math.floor(rnd() * 5)) : lod === 1 ? (old ? 9 : 6) : 3;
     let az = rnd() * TAU;
     for (let k = 0; k < nb; k++) {
       const v = (k + 0.3 + rnd() * 0.5) / nb;
@@ -236,7 +237,7 @@ function growTree(t, B, F, rnd) {
       const shape = young ? 1 - v * 0.72 : v < 0.25 ? 0.75 + v : 1 - 0.72 * Math.pow((v - 0.25) / 0.75, 1.3);
       const len = Rc * shape * (0.72 + rnd() * 0.5) * (lod ? 1.25 : 1);
       const rise = young ? 0.3 + v * 0.6 : -0.08 + v * v * 0.95 + rnd() * 0.2;
-      const [p0, , tip] = limb(u, az, len, rise, radiusAt(u) * 0.36);
+      const [p0, , tip] = limb(u, az, len, old ? rise * 0.6 : rise, radiusAt(u) * (old ? 0.3 : 0.36));
       bough(p0, tip, Math.max(len * 0.62, 0.55) * (lod === 2 ? 1.5 : 1), from, 0.8 + 0.22 * v);
     }
     // latva: muutama pysty verso
@@ -248,11 +249,11 @@ function growTree(t, B, F, rnd) {
     }
     // kuolleet oksantyngät elävän latvuksen alla
     if (lod === 0 && !young) {
-      const stubs = 5 + Math.floor(rnd() * 5);
+      const stubs = (old ? 9 : 5) + Math.floor(rnd() * 5);
       for (let i = 0; i < stubs; i++) {
         const u = 0.2 + rnd() * (cb - 0.2), a = rnd() * TAU, len = 0.25 + rnd() * 0.9;
         const p0 = trunkAt(u);
-        B.tube([{ p: p0, r: 0.018, h: 0.02 }, { p: [p0[0] + Math.cos(a) * len, p0[1] - len * (0.05 + rnd() * 0.35), p0[2] + Math.sin(a) * len], r: 0.006, h: 0.02 }], 3, 3, seed, base);
+        B.tube([{ p: p0, r: old ? 0.035 : 0.018, h: 0.02 }, { p: [p0[0] + Math.cos(a) * len, p0[1] - len * (0.05 + rnd() * 0.35), p0[2] + Math.sin(a) * len], r: 0.006, h: 0.02 }], 3, 3, seed, base);
       }
     }
   } else if (kind === 'birch' || kind === 'alder' || kind === 'aspen' || kind === 'rowan') {
@@ -323,23 +324,31 @@ function placeTrees(rnd) {
     const t = { x, z, kind, lod };
     const q = rnd();
     if (kind === 'pine') {
-      t.H = 16.5 + q * 6.5; t.dbh = 0.17 + q * 0.11 + rnd() * 0.03; t.margin = 3.0; t.litter = 1.1 + q * 0.7; t.litterAmount = 0.95;
+      if (rnd() < 0.13) {
+        // Järeä vanha mänty. Kangasmetsän vanhat männyt ovat 50–80 cm paksuja; Suomen
+        // suurimpien ympärysmitta on lähes 4 m (läpimitta yli metrin).
+        t.veteran = true;
+        t.H = 24 + q * 5; t.dbh = 0.48 + q * 0.3 + rnd() * 0.05; t.litter = 2.4 + q; t.litterAmount = 1;
+      } else {
+        t.H = 16.5 + q * 6.5; t.dbh = 0.17 + q * 0.11 + rnd() * 0.03; t.litter = 1.1 + q * 0.7; t.litterAmount = 0.95;
+      }
+      t.margin = t.dbh / 2 + 0.35;
     } else if (kind === 'youngPine') {
-      t.H = 2.2 + q * 7.5; t.dbh = 0.04 + q * 0.12; t.margin = 2.6 + t.H * 0.2; t.litter = 0.6 + q * 0.6; t.litterAmount = 0.6;
+      t.H = 2.2 + q * 7.5; t.dbh = 0.04 + q * 0.12; t.margin = 0.5 + t.H * 0.1; t.litter = 0.6 + q * 0.6; t.litterAmount = 0.6;
     } else if (kind === 'birch') {
-      t.H = 8 + q * 10; t.dbh = 0.08 + q * 0.15; t.margin = 3.2 + q; t.litter = 0.9; t.litterAmount = 0.5;
+      t.H = 8 + q * 10; t.dbh = 0.08 + q * 0.15; t.margin = 0.9; t.litter = 0.9; t.litterAmount = 0.5;
     } else if (kind === 'alder') {
-      t.H = 5 + q * 5; t.dbh = 0.08 + q * 0.1; t.margin = 3.2; t.litter = 0.8; t.litterAmount = 0.4;
+      t.H = 5 + q * 5; t.dbh = 0.08 + q * 0.1; t.margin = 0.9; t.litter = 0.8; t.litterAmount = 0.4;
     } else if (kind === 'aspen') {
-      t.H = 12 + q * 8; t.dbh = 0.13 + q * 0.14; t.margin = 3.2; t.litter = 1; t.litterAmount = 0.5;
+      t.H = 12 + q * 8; t.dbh = 0.13 + q * 0.14; t.margin = 0.7; t.litter = 1; t.litterAmount = 0.5;
     } else if (kind === 'rowan') {
-      t.H = 2.5 + q * 3.5; t.dbh = 0.04 + q * 0.05; t.margin = 3; t.litter = 0;
+      t.H = 2.5 + q * 3.5; t.dbh = 0.04 + q * 0.05; t.margin = 0.9; t.litter = 0;
     } else if (kind === 'bush') {
-      t.H = 2.2 + q * 2.6; t.dbh = 0.03; t.margin = 2.4; t.litter = 0;
+      t.H = 2.2 + q * 2.6; t.dbh = 0.03; t.margin = 0.9; t.litter = 0;
     } else if (kind === 'spruce') {
-      t.H = 1.6 + q * 5.5; t.dbh = 0.04 + q * 0.1; t.margin = 2.4 + t.H * 0.22; t.litter = 0.8 + q * 0.6; t.litterAmount = 0.7;
+      t.H = 1.6 + q * 5.5; t.dbh = 0.04 + q * 0.1; t.margin = 0.4 + t.H * 0.12; t.litter = 0.8 + q * 0.6; t.litterAmount = 0.7;
     } else {
-      t.H = 0.8 + q * 1.8; t.dbh = 0; t.margin = 1.5; t.litter = 0;
+      t.H = 0.8 + q * 1.8; t.dbh = 0; t.margin = 0.6; t.litter = 0;
     }
     trees.push(t);
     return t;
@@ -373,8 +382,8 @@ function placeTrees(rnd) {
   };
   const inPlot = (x, z) => x > SITE.x0 && x < SITE.x1 && inland(x, z) < SITE.depth;
   const inRing = (x, z) => x > SITE.x0 - 42 && x < SITE.x1 + 42 && inland(x, z) < SITE.depth + 44;
-  zone(SITE.x0, SITE.x1, -78, 50, 3.0, 0.33, 0, (x, z) => !inPlot(x, z));
-  zone(SITE.x0 - 42, SITE.x1 + 42, -122, 50, 3.6, 0.36, 1, (x, z) => inPlot(x, z) || !inRing(x, z));
+  zone(SITE.x0, SITE.x1, -78, 50, 3.0, 0.4, 0, (x, z) => !inPlot(x, z));
+  zone(SITE.x0 - 42, SITE.x1 + 42, -122, 50, 3.6, 0.4, 1, (x, z) => inPlot(x, z) || !inRing(x, z));
   zone(-230, 230, -260, 50, 8.5, 0.6, 2, (x, z) => inRing(x, z));
 
   // Rannan reunus: lepät, koivut ja pajupensaat kasvavat aivan vesirajassa ja kurottavat veden
@@ -401,6 +410,10 @@ function placeBoulders(rnd) {
   const put = (x, z, r, sink, flat = 1) => list.push({ x, z, r, sink, flat, seed: rnd() * 97 });
   // isot siirtolohkareet ja niiden seuralaiset
   const big = [[-21, 21], [16, 30], [31, -22], [-33, -8], [9, -44], [-12, -64], [37, 12]];
+  for (let i = 0; i < 14; i++) {
+    const x = SITE.x0 + 4 + rnd() * (SITE.x1 - SITE.x0 - 8), z = -74 + rnd() * 112;
+    if (inland(x, z) > 6) big.push([x, z]);
+  }
   for (const [x, z] of big) {
     const r = 0.8 + rnd() * 0.9;
     put(x, z, r, 0.32);
@@ -411,9 +424,9 @@ function placeBoulders(rnd) {
     }
   }
   // sammaleiset maakivet: matalia, puoliksi maan sisässä, ryhminä
-  for (let i = 0; i < 150; i++) {
+  for (let i = 0; i < 520; i++) {
     const x = SITE.x0 + 2 + rnd() * (SITE.x1 - SITE.x0 - 4), z = -72 + rnd() * 116;
-    if (inland(x, z) < 3 || vnoise(x / 11, z / 11, 61) < 0.42) continue;
+    if (inland(x, z) < 3 || vnoise(x / 11, z / 11, 61) < 0.36) continue;
     put(x, z, 0.16 + rnd() * rnd() * 0.5, 0.5, 0.7);
   }
   // kivinen rantaviiva
@@ -471,15 +484,17 @@ const lifted = (base) => {
 // näkyvyys: 0 jos tyvi on mökin jalanjäljen sisällä (varauksen verran reunasta)
 const visibleAt = (base) => footprintDistance(base.xy).greaterThan(base.z).toFloat();
 // Puut väistyvät lisäksi pihapiiristä, ja matalat puut (varaus negatiivinen) järvinäkymän linjalta.
-const treeVisibleAt = (base) => footprintDistance(base.xy).greaterThan(base.z.abs()).toFloat()
-  .mul(yardDistance(base.xy).greaterThan(0).toFloat())
-  .mul(base.z.greaterThan(0).or(viewDistance(base.xy).greaterThan(0)).toFloat());
+// Puu väistyy vain, jos sen runko osuu mökkiin, terassiin tai katon alle. Kameran ympäriltä puut
+// voi lisäksi piilottaa kuvaamista varten; varjokarttaan ne jäävät.
+const treeStands = (base) => buildingDistance(base.xy).greaterThan(base.z).toFloat();
+const treeVisibleAt = (base) => treeStands(base).mul(cameraCleared(base.xy).not().toFloat());
 
 function barkMaterial() {
   const m = new THREE.MeshStandardNodeMaterial();
   const base = attribute('base', 'vec4');
   const bark = attribute('bark', 'vec3');
   m.positionNode = lifted(base).mul(treeVisibleAt(base));
+  m.castShadowPositionNode = lifted(base).mul(treeStands(base));
   const P = positionWorld;
   const sp = bark.x, h = bark.y, sd = bark.z;
   const is = (id) => sp.greaterThan(id - 0.5).and(sp.lessThan(id + 0.5));
@@ -492,7 +507,7 @@ function barkMaterial() {
   // mänty: tyvellä harmaanruskea kilpikaarna syvine uurteineen, muutaman metrin korkeudelta
   // ylöspäin oranssi, ohuina levyinä hilseilevä kaarna
   const plate = smoothstep(-0.3, 0.25, furrow.x.add(fine.x.mul(0.35)));
-  const pineLow = mix(vec3(0.115, 0.1, 0.088), mix(vec3(0.03, 0.024, 0.02), mix(vec3(0.2, 0.16, 0.135), vec3(0.27, 0.25, 0.23), furrow.w.mul(0.5).add(0.5)), plate), barkNear);
+  const pineLow = mix(vec3(0.07, 0.06, 0.052), mix(vec3(0.03, 0.024, 0.02), mix(vec3(0.13, 0.105, 0.088), vec3(0.19, 0.17, 0.15), furrow.w.mul(0.5).add(0.5)), plate), barkNear);
   const pineHigh = mix(vec3(0.3, 0.15, 0.068), mix(vec3(0.2, 0.09, 0.042), vec3(0.4, 0.215, 0.095), smoothstep(-0.5, 0.5, flake.x.add(fine.y.mul(0.3)))), barkNear);
   const turn = smoothstep(0.13, 0.33, h.add(furrow.z.mul(0.06).mul(barkNear)));
   const pine = mix(pineLow, pineHigh, turn);
@@ -517,6 +532,7 @@ function foliageMaterial(atlas) {
   const m = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide });
   const base = attribute('base', 'vec4');
   m.positionNode = lifted(base).mul(treeVisibleAt(base));
+  m.castShadowPositionNode = lifted(base).mul(treeStands(base));
   const texel = texture(atlas, uv());
   // reunat pehmenevät monilla näytteillä (alpha to coverage); varjokartassa raja on kova
   m.opacityNode = texel.a;

@@ -26,9 +26,15 @@ Sivu on staattinen, joten käännösvaihetta ei ole. three.js ladataan jsDelivr-
 | 1 sormi / hiiren vasen | kierto |
 | 2 sormea / hiiren oikea | siirto; nipistys tai rulla lähentää osoitettuun kohtaan |
 | kaksoisnapautus | tarkennus napautettuun kohtaan |
-| näkymärivi | valmiit näkymät: Mökki, Tontti, Terassi, Nurkka, Ranta, Varvikko |
+| säädinpainike (oikea alakulma) | avaa alapaneelin; sulkeutuu ruksista, Esc-näppäimellä tai vetämällä alas |
+
+Alapaneelin välilehdet (`src/sheet.js`; viimeksi käytetty välilehti muistetaan):
+
+| Välilehti | Sisältö |
+| --- | --- |
+| Näkymä | valmiit näkymät (Mökki, Tontti, Terassi, Nurkka, Ranta, Varvikko) ja puiden piilotus kameran ympäriltä 0–60 m kuvaamista varten |
 | Valo | valon suunta ja auringon korkeus |
-| Katto | katto päälle tai pois, tyyppi, pulpettikaton ylitys edessä, takana ja sivuilla |
+| Mökki | hirsien sävy (vastaveistetystä tummuneeseen), katto päälle tai pois, tyyppi, ylitykset |
 | Terassi | terassi päälle tai pois, pergolan pää, palju / poreallas / ei allasta, liukulasit |
 | Paikka | mökin siirto napauttamalla maastoa, mökin suunta, palautus |
 
@@ -71,6 +77,8 @@ Sivu on staattinen, joten käännösvaihetta ei ole. three.js ladataan jsDelivr-
   paikasta rungon sisällä, ja piiluiskun kouru siirtää paikkaa pari milliä syvemmälle.
 - Iskut ja oksat arvotaan varjostimessa hirren siemenestä, joten hirsikohtaisia tekstuureja
   ei tarvita. Sahatavara (laudat, palkit) käyttää samaa puuta ilman piilutusta.
+- Hirsien sävyä voi säätää vastaveistetyn vaaleasta männystä vuosia ulkona olleeseen
+  kullanruskeaan; oletus on siltä väliltä. Syykuvio ja vuosirenkaat säilyvät.
 - Kaukaa katsottaessa hienoin rakenne (syyt, oksat) jätetään laskematta.
 
 **Katto** (`src/mokki/roof.js`)
@@ -105,7 +113,7 @@ varpumatto sammaleisine kivineen ja ranta, jossa metsä ulottuu vesirajaan.
 **Maasto** (`src/tontti/terrain.js`)
 
 - Tontti on 90 m leveä ja ulottuu rannasta 118 m rinteeseen (noin 1,06 ha). Rinne on noin
-  4,5 % ja siinä on tasaisempi hylly; tontin takana on harjun laki.
+  9 %, ja maa nousee rannasta tontin perälle noin 12 m.
 - Ranta: metsä ja varvikko jatkuvat vesirajaan asti. Rannassa on matala törmä, kivinen
   rantaviiva ja lehtipuureunus (leppiä, koivuja, pajupensaita), jotka kurottavat veden ylle.
   Paljasta hiekkaa on vain kapea märkä kaista; hiekkapohja kuultaa matalassa, kirkkaassa mutta
@@ -123,35 +131,41 @@ varpumatto sammaleisine kivineen ja ranta, jossa metsä ulottuu vesirajaan.
 
 **Metsä** (`src/tontti/forest.js`, `src/tontti/atlas.js`)
 
-- Tontilla on noin 440 puuta, joista kaksi kolmasosaa on hoikkia, suoria mäntyjä (16–23 m,
-  rinnankorkeusläpimitta 17–30 cm): tyvellä harmaanruskea kilpikaarna, muutaman metrin
-  korkeudelta oranssi hilseilevä kaarna, pieni latvus korkealla ja sen alla kuolleita
-  oksantynkiä. Männyn oksat ovat oksan suuntaisia neulasviuhkoja, eivät pyöreitä tupsuja.
+- Tontilla on noin 500 puuta, joista kaksi kolmasosaa on mäntyjä. Tavalliset männyt ovat
+  hoikkia ja suoria (16–23 m, rinnankorkeusläpimitta 17–30 cm): tyvellä harmaanruskea
+  kilpikaarna, muutaman metrin korkeudelta oranssi hilseilevä kaarna, pieni latvus korkealla ja
+  sen alla kuolleita oksantynkiä. Noin joka kahdeksas mänty on järeä vanha petäjä (24–29 m,
+  läpimitta 48–83 cm), jolla on leveä, laakea latvus. Vertailuksi: kangasmetsän vanhat männyt
+  ovat tyypillisesti 50–80 cm paksuja, ja Suomen suurimpien mäntyjen ympärysmitta on lähes
+  4 m eli läpimitta yli metrin. Männyn oksat ovat oksan suuntaisia neulasviuhkoja.
   Seassa on nuoria mäntyjä, alikasvoskuusia, koivuja, haaparyhmä, katajia ja pihlajia.
   Tontin ympärillä on noin 1 500 kevyempää puuta taustana.
-- Kiviä on noin 300: seitsemän isoa siirtolohkaretta, sammaleisia maakiviä ryhminä ja
-  rantaviivan kivikko. Metsässä kivet ovat sammalen ja rupijäkälän peitossa, vesirajassa
+- Kiviä on noin 650: parikymmentä isoa siirtolohkaretta seuralaisineen, sammaleisia maakiviä
+  ryhminä ja rantaviivan kivikko. Metsässä kivet ovat sammalen ja rupijäkälän peitossa, vesirajassa
   paljaita ja märkiä.
 - Varvikko on noin 37 000 mätästä (puhelimessa 26 000): mustikkaa, puolukkaa, kanervaa ja
   metsälauhaa luonnollisessa koossaan (puolukka 10–20 cm, mustikka 20–30 cm, kanerva 25–40 cm);
   rannassa heinää ja saraa. Laji valitaan kasvupaikan kuivuudesta.
 - Kasvien kuvat piirretään käynnistyksessä kanvaasille; kuvatiedostoja ei ole.
 
-**Mökin siirto**
+**Mökin siirto ja puiden väistö**
 
-- Paikka-paneelista mökin voi siirtää napauttamalla maastoa ja kääntää liukusäätimellä.
+- Paikka-välilehdeltä mökin voi siirtää napauttamalla maastoa ja kääntää liukusäätimellä.
   Jalanjälki pysyy tontilla ja kuivalla maalla.
-- Puut, kivet ja mättäät katoavat mökin ja terassin alta. Mökin edessä on pihapiiri, josta puut
-  on kaadettu, ja siitä rantaan näkymälinja, jolta on raivattu matalat puut mutta männyt ja
-  rannan lehtipuureunus jätetty. Kaikki tämä tehdään varjostimessa: jokainen kasvin kärki
-  tietää tyvensä paikan, ja jalanjäljen sisään jäävät kutistuvat pisteeksi. Siirrossa
-  päivitetään maaston korkeudet ja rakennetaan uudelleen vain terassin harkot ja portaat.
-- Mökki-näkymä hakee kuvakulman, josta mökki näkyy runkojen välistä.
+- Puu väistyy vain, jos sen runko osuu mökkiin, terassiin tai katon alle; kivet ja mättäät
+  väistyvät mökin ja terassin alta. Muuten metsä jää mökin ympärille sellaisenaan.
+- Kuvaamista varten Näkymä-välilehden liukusäätimellä puut voi piilottaa kameran ympäriltä
+  (0–60 m). Piilotetut puut jäävät varjokarttaan, joten valo ja varjot pysyvät luonnollisina.
+  Aivan kameran vierestä (2,5 m) puut piilotetaan aina, jottei runko peitä koko kuvaa.
+- Kaikki tämä tehdään varjostimessa: jokainen kasvin kärki tietää tyvensä paikan, ja
+  väistyvät kutistuvat pisteeksi. Siirrossa päivitetään maaston korkeudet ja rakennetaan
+  uudelleen vain terassin harkot ja portaat.
+- Mökki-näkymä hakee silmän korkeudelta kulman, josta mökki näkyy runkojen välistä.
 
 **Keveys**
 
 - Puut ovat kahdessa verkossa (rungot ja lehvästö), kivet yhdessä ja varvikko alueittain;
-  maasto on harveneva ruudukko (46 000 kolmiota). Kohtauksessa on noin 490 000 kolmiota.
+  maasto on harveneva ruudukko (46 000 kolmiota). Kohtauksessa on noin 560 000 kolmiota.
 - Varjokartta piirretään vain, kun aurinko, mökki tai kuvattava alue muuttuu, ei joka ruudulla.
   Se seuraa kameran kohdetta: läheltä tarkka, kaukaa koko tontin kattava.
 - Varvikko piirretään vain kameran lähellä (60 m). Jos laite ei pysy tahdissa alimmallakaan
@@ -184,7 +198,7 @@ varpumatto sammaleisine kivineen ja ranta, jossa metsä ulottuu vesirajaan.
 - Osoiteparametrit: `?view=…`, `?az=…&el=…` (aurinko), `?q=mobile|desktop`, `?pr=…`, `?ssaa=…`,
   `?noao`, `?nostill`, `?webgl`, `?webgpu`, `?cam=x,y,z,tx,ty,tz`. Mökissä lisäksi `?katto=0`,
   `?tyyppi=harja`, `?etu=…`, `?taka=…`, `?sivu=…`, `?terassi=0`, `?paa=oikea`, `?allas=spa|ei`,
-  `?lasit=0` sekä mökin paikka `?x=…&z=…&suunta=…`.
+  `?lasit=0`, `?raivaus=…` (m), `?savy=0…1` sekä mökin paikka `?x=…&z=…&suunta=…`.
 
 ## Referenssit
 
@@ -204,7 +218,7 @@ varpumatto sammaleisine kivineen ja ranta, jossa metsä ulottuu vesirajaan.
 
 - Testaus on tehty headless-Chromiumissa ohjelmallisella WebGPU-laitteella ja WebGL 2
   -varatilalla. Mallihirsi ja aiempi mökin runko on ajettu iPhonella WebGPU:lla; tonttia ei
-  vielä. Ohjelmallisella laitteella tontti on noin 3,5 kertaa raskaampi kuin pelkkä runko.
+  vielä. Ohjelmallisella laitteella tontti on noin neljä kertaa raskaampi kuin pelkkä runko.
 - Tontti on alustava malli eikä mikään tietty kiinteistö. Vesi on tyyni eikä liiku, eikä
   tuulta ole.
 - Maan muotoilu on pelkkä tasaus: tukimuureja, salaojia tai ajotietä ei ole.

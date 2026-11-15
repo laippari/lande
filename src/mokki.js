@@ -7,10 +7,11 @@
 
 import * as THREE from 'three/webgpu';
 import { startViewer, showError } from './viewer.js';
+import { createSheet } from './sheet.js';
 import { createEnvironment } from './env.js';
 import { planCabin, DIM } from './mokki/plan.js';
 import { Timber } from './mokki/mesh.js';
-import { createCabinWoodMaterial } from './mokki/wood.js';
+import { createCabinWoodMaterial, woodTone } from './mokki/wood.js';
 import { createRoof, ROOF_LIMITS } from './mokki/roof.js';
 import { PLINTH, addFloor, addWindows, glassGeometry, createGlassMaterial, createConcreteMaterial, pillarGeometry, plinthGeometry, ventGeometry } from './mokki/structure.js';
 import { TERRACE, buildTerrace, buildGroundworks, footprintBoxes } from './mokki/terrace.js';
@@ -37,12 +38,15 @@ const state = {
   },
   place: { x: number('x', HOME.x), z: number('z', HOME.z), yaw: THREE.MathUtils.degToRad(number('suunta', 0)) },
   moving: false,
+  clear: clamp(number('raivaus', 0), [0, 60]), // puiden piilotus kameran ympäriltä (m)
+  tone: clamp(number('savy', 0.6), [0, 1]), // hirsien sävy
 };
+woodTone.value = state.tone;
 
 // Näkymät. local: kameran paikka ja kohde mökin omassa koordinaatistossa (seuraa mökkiä), muut
 // maailman koordinaateissa. sun: [atsimuutti x-akselista kohti järveä, korkeus].
 const VIEWS = {
-  mokki: { name: 'Mökki', local: true, pos: [-10, 3.4, 21], target: [0, 1.5, 3.2], bias: 0, tall: { local: true, pos: [-2.5, 4.6, 22], target: [0, 1.4, 3.6], bias: 0, fit: true, margin: 0.93, sun: [128, 33] }, sun: [128, 33], fit: true },
+  mokki: { name: 'Mökki', cabinShot: true, exact: true, sun: [128, 33] },
   tontti: { name: 'Tontti', pos: [-58, 30, 104], target: [0, 3, -4], sun: [128, 35] },
   terassi: { name: 'Terassi', local: true, pos: [7.5, 2.5, 14.5], target: [-1.6, 1.4, 5.6], sun: [118, 30] },
   nurkka: { name: 'Nurkka', local: true, pos: [-9.0, 1.7, -6.7], target: [-5.9, 1.45, -3.9], sun: [214, 27] },
@@ -137,14 +141,21 @@ function build({ renderer, scene, quality, Q }) {
     footprint.boxB.value.set(...b);
     footprint.house.value.set(0, 0, DIM.width / 2, DIM.depth / 2);
     footprint.pad.value.set(level, 1);
-    // pihapiiri etuseinästä 17 m järvelle päin
-    footprint.yard.value.set(0, DIM.depth / 2 + 8.5, 10, 8.5);
-    footprint.view.value.set(0, DIM.depth / 2 + 22, 9, 22);
+    roofBox();
   };
 
+  // Katon ulottuma puille: runko ei saa nousta räystään läpi.
+  const roofBox = () => {
+    if (!plan) return;
+    const mono = plan.roofType === 'mono';
+    const back = mono ? state.back : roof.eave, front = mono ? state.front : roof.eave;
+    const z0 = -DIM.depth / 2 - back, z1 = DIM.depth / 2 + front;
+    footprint.roof.value.set(0, (z0 + z1) / 2, DIM.width / 2 + state.side, (z1 - z0) / 2);
+  };
   const rebuildRoof = () => {
     stats.roofTriangles = roof.update(plan, state);
     roof.group.visible = state.roofOn;
+    roofBox();
   };
 
   // Runko rakennetaan uudelleen, kun katon tyyppi (seinien korkeus) tai terassi muuttuu.
@@ -197,6 +208,9 @@ function build({ renderer, scene, quality, Q }) {
   let shadowKey = '';
   const onFrame = (camera, controls) => {
     forest.update(camera);
+    // kuvaamista varten piilotetut puut kameran ympäriltä
+    // aina vähintään 2,5 m, ettei runko osu aivan kameran eteen
+    footprint.clear.value.set(camera.position.x, camera.position.z, Math.max(state.clear, 2.5));
     const t = controls.target;
     const dist = camera.position.distanceTo(t);
     let r = 17;
@@ -229,14 +243,14 @@ function build({ renderer, scene, quality, Q }) {
     }
     return best || { x: -14, z: 22 };
   };
-  // Kuinka paljon tontin puita on kameran ja kohdepisteiden välissä (pihapiiristä kaadettuja
+  // Kuinka paljon tontin puita on kameran ja kohdepisteiden välissä (mökin alta poistettuja
   // ei lasketa). Käytetään valitsemaan kuvakulma, josta mökki näkyy runkojen välistä.
-  const yardBox = () => [[0, DIM.depth / 2 + 8.5, 10, 8.5]];
   const blocked = (cx, cz, targets) => {
     let score = 0;
     for (const t of forest.trees) {
       if (t.lod !== 0) continue;
-      if (footprintDistanceJS(state.place, yardBox(), t.x, t.z) < 0 || footprintDistanceJS(state.place, boxes(), t.x, t.z) < t.margin) continue;
+      if (footprintDistanceJS(state.place, boxes(), t.x, t.z) < t.margin) continue;
+      if (state.clear > 0 && Math.hypot(t.x - cx, t.z - cz) < state.clear) continue;
       for (const [tx, tz] of targets) {
         const dx = tx - cx, dz = tz - cz, len = Math.hypot(dx, dz);
         const u = ((t.x - cx) * dx + (t.z - cz) * dz) / (len * len);
@@ -251,26 +265,33 @@ function build({ renderer, scene, quality, Q }) {
     return score;
   };
   const resolveView = (view) => {
-    if (view.local && view.fit) {
-      // kokonaiskuva: kierretään kameraa mökin ympäri, kunnes edessä on vähiten puita
-      const target = new THREE.Vector3(...view.target);
-      const dir = new THREE.Vector3(...view.pos).sub(target);
+    if (view.cabinShot) {
+      // Kokonaiskuva mökistä silmän korkeudelta: kierretään kameraa mökin edessä ja valitaan
+      // kulma, jossa runkoja ja latvuksia on vähiten edessä.
+      const tall = innerWidth / innerHeight < 0.8;
+      // etäisyys, jolla mökki terasseineen mahtuu kuvaan (pystykuvassa kauempaa)
+      const dist = tall ? 40 : 26;
       const facade = [-5, 0, 5].map((lx) => {
         const p = toWorld(lx, 1.5, DIM.depth / 2);
         return [p.x, p.z];
       });
+      const centre = toWorld(0, 1.6, DIM.depth / 2 + 1);
       let best = null;
-      for (let a = -48; a <= 48; a += 8) {
-        const d = dir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(a));
-        const flat = Math.hypot(d.x, d.z);
-        const reachOut = innerWidth / innerHeight < 0.8 ? 35 : 28;
-        const probe = toWorld(target.x + (d.x / flat) * reachOut, 2, target.z + (d.z / flat) * reachOut);
-        const score = blocked(probe.x, probe.z, facade) + Math.abs(a - (view.bias || 0)) * 0.012;
-        if (!best || score < best.score) best = { score, d };
+      for (let a = -55; a <= 55; a += 5) {
+        const r = THREE.MathUtils.degToRad(a - 22);
+        const p = toWorld(Math.sin(r) * dist, 0, DIM.depth / 2 + 1 + Math.cos(r) * dist);
+        let score = blocked(p.x, p.z, facade) + Math.abs(a) * 0.01;
+        for (const t of forest.trees) {
+          if (t.lod !== 0) continue;
+          const d = Math.hypot(t.x - p.x, t.z - p.z);
+          // lähellä kameraa oleva puu peittää kuvan, matalalatvuksinen jo kauempaa
+          if (d < 3.5) score += 4;
+          else if (t.kind !== 'pine' && d < 7) score += 2.5;
+        }
+        if (!best || score < best.score) best = { score, p };
       }
-      const pos = target.clone().add(best.d);
-      const sun = [view.sun[0] - THREE.MathUtils.radToDeg(state.place.yaw), view.sun[1]];
-      return { ...view, pos: toWorld(pos.x, pos.y, pos.z).toArray(), target: toWorld(...view.target).toArray(), sun };
+      const y = Math.max(heightAt(best.p.x, best.p.z), 0.2) + (tall ? 3.2 : 2.2);
+      return { ...view, pos: [best.p.x, y, best.p.z], target: [centre.x, centre.y - 0.3, centre.z], sun: [view.sun[0] - THREE.MathUtils.radToDeg(state.place.yaw), view.sun[1]] };
     }
     if (view.local) {
       const sun = [view.sun ? view.sun[0] - THREE.MathUtils.radToDeg(state.place.yaw) : 0, view.sun ? view.sun[1] : 30];
@@ -360,6 +381,11 @@ function wireControls(viewer) {
     document.querySelectorAll('[data-tub]').forEach((b) => pressed(b, b.dataset.tub === t.tub));
     pressed($('glazing'), t.glazing);
     pressed($('moveOn'), state.moving);
+    $('moveNote').hidden = !state.moving;
+    $('clear').value = state.clear;
+    $('clearOut').textContent = state.clear > 0 ? `${state.clear} m` : 'ei';
+    $('tone').value = state.tone;
+    $('toneOut').textContent = state.tone < 0.15 ? 'vastaveistetty' : state.tone > 0.8 ? 'tummunut' : `${Math.round(state.tone * 100)} %`;
     const deg = Math.round(THREE.MathUtils.radToDeg(state.place.yaw));
     $('yaw').value = deg;
     $('yawOut').textContent = `${deg}°`;
@@ -417,12 +443,24 @@ function wireControls(viewer) {
     moveTo(HOME.x, HOME.z, HOME.yaw);
     redraw();
   });
-  // siirtotila päättyy, kun paneeli suljetaan
-  document.querySelector('[data-panel="place"]').addEventListener('click', () => {
-    if ($('place').hidden && state.moving) {
-      state.moving = false;
-      redraw();
-    }
+  $('clear').addEventListener('input', () => {
+    state.clear = Number($('clear').value);
+    redraw();
+  });
+  $('tone').addEventListener('input', () => {
+    state.tone = Number($('tone').value);
+    woodTone.value = state.tone;
+    redraw();
+  });
+  // Kaikki säätimet ovat alapaneelissa. Siirtotila päättyy, kun paneeli suljetaan tai
+  // vaihdetaan toiselle välilehdelle.
+  createSheet({
+    onChange: ({ open, tab }) => {
+      if (state.moving && (!open || tab !== 'place')) {
+        state.moving = false;
+        redraw();
+      }
+    },
   });
   viewer.renderer.domElement.addEventListener('pointerup', () => setTimeout(sync, 0));
 

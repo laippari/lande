@@ -128,8 +128,8 @@ export async function startViewer({ views: VIEWS, defaultView, build, maxDistanc
     const target = new THREE.Vector3().fromArray(src.target);
     const pos = new THREE.Vector3().fromArray(src.pos);
     // pystynäytöllä lähikuvat otetaan hieman kauempaa, jotta kohde mahtuu kapeaan kuvaan
-    if (camera.aspect < 0.8 && !view.tall) pos.sub(target).multiplyScalar(1.45).add(target);
-    if (view.fit) {
+    if (camera.aspect < 0.8 && !view.tall && !view.exact) pos.sub(target).multiplyScalar(1.45).add(target);
+    if (view.fit || src.fit) {
       const dir = pos.clone().sub(target).normalize();
       const probe = camera.clone();
       const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
