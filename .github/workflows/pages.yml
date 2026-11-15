@@ -1,5 +1,5 @@
 # Julkaisee sivun GitHub Pagesiin jokaisella main-haaran pushilla.
-# Sivu on staattinen (ei käännösvaihetta): julkaistaan repon juuri sellaisenaan.
+# Sivu on staattinen (ei käännösvaihetta): julkaistaan index.html ja src/ (sekä assets/, jos on).
 # Kertaluonteinen asetus: Settings → Pages → Build and deployment → Source: GitHub Actions.
 name: Deploy to GitHub Pages
 
@@ -25,6 +25,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check module syntax
+        run: |
+          for f in $(find src -name '*.js'); do
+            node --input-type=module --check < "$f" || { echo "syntax error in $f"; exit 1; }
+          done
       - name: Assemble site
         run: |
           mkdir _site
