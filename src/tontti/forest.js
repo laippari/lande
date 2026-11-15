@@ -410,12 +410,13 @@ function placeBoulders(rnd) {
   const put = (x, z, r, sink, flat = 1) => list.push({ x, z, r, sink, flat, seed: rnd() * 97 });
   // isot siirtolohkareet ja niiden seuralaiset
   const big = [[-21, 21], [16, 30], [31, -22], [-33, -8], [9, -44], [-12, -64], [37, 12]];
-  for (let i = 0; i < 14; i++) {
-    const x = SITE.x0 + 4 + rnd() * (SITE.x1 - SITE.x0 - 8), z = -74 + rnd() * 112;
+  for (let i = 0; i < 34; i++) {
+    const x = SITE.x0 - 20 + rnd() * (SITE.x1 - SITE.x0 + 40), z = -74 + rnd() * 112;
     if (inland(x, z) > 6) big.push([x, z]);
   }
   for (const [x, z] of big) {
-    const r = 0.8 + rnd() * 0.9;
+    // joukossa muutama todella iso, yli kolmimetrinen siirtolohkare
+    const r = rnd() < 0.15 ? 1.6 + rnd() * 0.8 : 0.7 + rnd() * 0.9;
     put(x, z, r, 0.32);
     const n = 1 + Math.floor(rnd() * 3);
     for (let i = 0; i < n; i++) {
@@ -423,11 +424,27 @@ function placeBoulders(rnd) {
       put(x + Math.cos(a) * d, z + Math.sin(a) * d, 0.2 + rnd() * 0.35, 0.4);
     }
   }
+  // Kivikot: rajattuja aloja, joilla on kymmeniä pieniä ja keskikokoisia kiviä tiheästi,
+  // osa toistensa kyljessä; laidoilla harvenevat.
+  for (let i = 0; i < 46; i++) {
+    const cx = SITE.x0 - 15 + rnd() * (SITE.x1 - SITE.x0 + 30), cz = -74 + rnd() * 112;
+    if (inland(cx, cz) < 7) continue;
+    const R = 1.8 + rnd() * 3.6, n = Math.round(R * R * (2.2 + rnd() * 1.8));
+    const stretch = 0.6 + rnd() * 0.8, turn = rnd() * TAU;
+    for (let k = 0; k < n; k++) {
+      const a = rnd() * TAU, d = Math.sqrt(rnd()) * R;
+      const lx = Math.cos(a) * d, lz = Math.sin(a) * d * stretch;
+      const x = cx + lx * Math.cos(turn) - lz * Math.sin(turn), z = cz + lx * Math.sin(turn) + lz * Math.cos(turn);
+      const edge = d / R;
+      const r = (0.08 + rnd() * rnd() * 0.42) * (1.15 - edge * 0.5) * (rnd() < 0.06 ? 1.9 : 1);
+      put(x, z, r * 1.15, 0.3 + rnd() * 0.1, 0.7 + rnd() * 0.3);
+    }
+  }
   // sammaleiset maakivet: matalia, puoliksi maan sisässä, ryhminä
-  for (let i = 0; i < 520; i++) {
-    const x = SITE.x0 + 2 + rnd() * (SITE.x1 - SITE.x0 - 4), z = -72 + rnd() * 116;
+  for (let i = 0; i < 900; i++) {
+    const x = SITE.x0 - 15 + rnd() * (SITE.x1 - SITE.x0 + 30), z = -72 + rnd() * 116;
     if (inland(x, z) < 3 || vnoise(x / 11, z / 11, 61) < 0.36) continue;
-    put(x, z, 0.16 + rnd() * rnd() * 0.5, 0.5, 0.7);
+    put(x, z, 0.18 + rnd() * rnd() * 0.55, 0.38, 0.75);
   }
   // kivinen rantaviiva
   for (let x = -110; x < 110; x += 0.5 + rnd() * 1.1) {
@@ -443,7 +460,7 @@ function boulderGeometry(list) {
   const ico = (detail) => mergeVertices(new THREE.IcosahedronGeometry(1, detail).deleteAttribute('uv').deleteAttribute('normal'));
   const proto = [ico(3), ico(2), ico(1)];
   for (const b of list) {
-    const g = proto[b.r > 0.7 ? 0 : b.r > 0.28 ? 1 : 2].clone();
+    const g = proto[b.r > 0.7 ? 0 : b.r > 0.38 ? 1 : 2].clone();
     const p = g.attributes.position;
     const sy = (0.62 + ((b.seed * 0.37) % 1) * 0.25) * b.flat, sx = 0.85 + ((b.seed * 0.71) % 1) * 0.4, sz = 0.85 + ((b.seed * 0.13) % 1) * 0.4;
     const yaw = b.seed;
@@ -563,7 +580,10 @@ function boulderMaterial() {
   const up = normalWorld.y;
   // veden äärellä kivet ovat paljaita ja märkiä, metsässä sammalen peitossa
   const dryLand = smoothstep(0.25, 0.9, P.y);
-  const moss = smoothstep(0.2, 0.6, up.add(mid.z.mul(0.35)).add(big.z.mul(0.3))).mul(dryLand);
+  // pienet kivet ovat enimmäkseen paljasta, jäkälän harmaata graniittia; sammal peittää isojen
+  // lohkareiden lakea (base.z kasvaa kiven koon mukana)
+  const sizeMoss = smoothstep(0.85, 1.6, base.z).mul(0.75).add(0.25);
+  const moss = smoothstep(0.2, 0.6, up.add(mid.z.mul(0.35)).add(big.z.mul(0.3))).mul(dryLand).mul(sizeMoss);
   const rock = mix(granite, lichen, crust.mul(0.65).mul(dryLand)).mul(mix(float(0.55), float(1), smoothstep(0.02, 0.25, P.y)));
   const mossCol = mix(vec3(0.07, 0.1, 0.028), vec3(0.19, 0.21, 0.05), smoothstep(-0.4, 0.5, mid.w.add(fine.z.mul(0.3))));
   const col = mix(rock, mossCol, moss.mul(0.92));
@@ -584,7 +604,26 @@ const TUFT = [
   { tile: [3, 7], w: [0.42, 0.6] },
 ];
 
-function tuftChunks(rnd, atlas, quality) {
+// Kivien kohdalla ei kasva varpuja: ruudukko, josta katsotaan, onko kohta jonkin kiven päällä.
+function stoneGrid(list) {
+  const cell = 2, map = new Map();
+  for (const b of list) {
+    const R = b.r * 1.15;
+    for (let i = Math.floor((b.x - R) / cell); i <= Math.floor((b.x + R) / cell); i++) {
+      for (let j = Math.floor((b.z - R) / cell); j <= Math.floor((b.z + R) / cell); j++) {
+        const k = i * 4096 + j;
+        if (!map.has(k)) map.set(k, []);
+        map.get(k).push(b);
+      }
+    }
+  }
+  return (x, z) => {
+    const near = map.get(Math.floor(x / cell) * 4096 + Math.floor(z / cell));
+    return !!near && near.some((b) => Math.hypot(x - b.x, z - b.z) < b.r * 0.95);
+  };
+}
+
+function tuftChunks(rnd, atlas, quality, onStone = () => false) {
   const cards = quality === 'mobile' ? 2 : 3;
   const pos = [], uvs = [], idx = [];
   for (let c = 0; c < cards; c++) {
@@ -648,6 +687,7 @@ function tuftChunks(rnd, atlas, quality) {
             iqA.push(Math.cos(a), Math.sin(a), 3, (0.9 + rnd() * 0.8) / w);
             continue;
           }
+          if (onStone(x, z)) continue;
           const shoreline = d < 2.6;
           const cover = shoreline ? 0.85 : coverAt(x, z);
           if (rnd() > (Math.pow(cover, 1.2) * 1.05 + 0.02) * (outside ? 0.4 : 1)) continue;
@@ -719,7 +759,8 @@ export function createForest({ quality }) {
   const boulders = placeBoulders(rnd);
   addMesh(boulderGeometry(boulders), boulderMaterial(), 0, true);
 
-  const tufts = tuftChunks(rnd, createTuftAtlas(), quality);
+  const onStone = stoneGrid(boulders);
+  const tufts = tuftChunks(rnd, createTuftAtlas(), quality, onStone);
   for (const c of tufts.chunks) group.add(c);
 
   // Varvikko piirretään vain kameran lähellä. Jos laite ei pysy tahdissa, etäisyyttä lyhennetään.
@@ -768,7 +809,7 @@ export function createForest({ quality }) {
         if (dHouse < 0.55 || dHouse > R) continue;
         if (r2() > 0.95 - 0.55 * (dHouse / R) ** 1.5) continue;
         const x = place.x + px * c + pz * s, z = place.z - px * s + pz * c;
-        if (inland(x, z) < 3) continue;
+        if (inland(x, z) < 3 || onStone(x, z)) continue;
         const dry = dryness(x, z) + (r2() - 0.5) * 0.3;
         const r = r2();
         // mustikkaa ja puolukkaa, kuivemmalla kanervaa, joukossa metsälauhaa
